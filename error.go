@@ -1,0 +1,263 @@
+// Copyright 2015 Tamás Demeter-Haludka
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package ab
+
+import (
+	"errors"
+	"fmt"
+	"html/template"
+	"log"
+	"net/http"
+
+	"github.com/nbio/httpcontext"
+)
+
+const errorKey = "aberror"
+
+// Color codes for HTML error pages
+var (
+	OtherForegroundColor   = "fdf6e3"
+	WarningForegroundColor = "fdf6e3"
+	ErrorForegroundColor   = "fdf6e3"
+	OtherBackgroundColor   = "268bd2"
+	WarningBackgroundColor = "b58900"
+	ErrorBackgroundColor   = "dc322f"
+)
+
+type ErrorHandler interface {
+	// Error handler method. This must panic with Panic, and the ErrorHandlerMiddleware will recover it.
+	HandleError(int, error)
+	// May panic with Panic depending on error. It should panic if error != nil.
+	MaybeError(int, error)
+}
+
+type VerboseError interface {
+	// Error that is displayed in the logs and debug messages. Should contain diagnostical information.
+	Error() string
+	// Error that is displayed to the end user.
+	VerboseError() string
+}
+
+var _ VerboseError = errorWrapper{}
+
+type errorWrapper struct {
+	error
+	verboseMessage string
+}
+
+func (ew errorWrapper) VerboseError() string {
+	return ew.verboseMessage
+}
+
+func WrapError(err error, verboseMessage string) VerboseError {
+	return errorWrapper{
+		error:          err,
+		verboseMessage: verboseMessage,
+	}
+}
+
+// Creates a new verbose error message.
+//
+// If err is an empty string, then verboseMessage will be used it instead.
+func NewVerboseError(err, verboseMessage string) VerboseError {
+	if err == "" {
+		err = verboseMessage
+	}
+
+	return WrapError(errors.New(err), verboseMessage)
+}
+
+var _ VerboseError = Panic{}
+
+// Custom panic data structure for the ErrorHandler
+type Panic struct {
+	Code          int
+	Err           error
+	displayErrors bool
+	logger        *log.Logger
+}
+
+func (p Panic) Error() string {
+	return p.Err.Error()
+}
+
+func (p Panic) String() string {
+	return p.Err.Error()
+}
+
+func (p Panic) VerboseError() string {
+	if ve, ok := p.Err.(VerboseError); ok {
+		return ve.VerboseError()
+	}
+
+	return ""
+}
+
+// Outputs the error to the HTTP response.
+//
+// It can render the error in 3 formats: HTML, JSON and text, depending on the Accept header. The default is HTML.
+func (p Panic) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	rd := NewRenderer().SetCode(p.Code)
+
+	pageData := ErrorPageData{
+		BackgroundColor: p.backgroundColor(),
+		ForegroundColor: p.foregroundColor(),
+		Code:            p.Code,
+		Message:         "",
+	}
+
+	if p.displayErrors && p.Err != nil {
+		pageData.Message = p.Error()
+	} else {
+		if ve := p.VerboseError(); ve != "" {
+			pageData.Message = ve
+		} else {
+			pageData.Message = http.StatusText(p.Code)
+		}
+	}
+
+	if p.Err != nil {
+		p.logger.Println(p.Err)
+	}
+
+	rd.
+		HTML(ErrorPage, pageData).
+		JSON(map[string]string{"message": pageData.Message}).
+		Text(pageData.Message)
+
+	rd.Render(w, r)
+}
+
+func (p Panic) backgroundColor() string {
+	return decideColor(p.Code, OtherBackgroundColor, WarningBackgroundColor, ErrorBackgroundColor)
+}
+
+func (p Panic) foregroundColor() string {
+	return decideColor(p.Code, OtherForegroundColor, WarningForegroundColor, ErrorForegroundColor)
+}
+
+func decideColor(code int, other, warn, err string) string {
+	if code >= 500 && code <= 599 {
+		return err
+	}
+	if code >= 400 && code <= 499 {
+		return warn
+	}
+	return other
+}
+
+// Error handler middleware. This middleware injects an ErrorHandler to the request context, and then recovers if the ErrorHandler paniced.
+//
+// The caller of the function should also supply a logger that will log the errors. The displayErrors sends the error messages to the user. This is useful in a development environment.
+//
+// This middleware is automatically added to the Server with PetBunny.
+func ErrorHandlerMiddleware(eh ErrorHandler, logger *log.Logger, displayErrors bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				rec := recover()
+				if rec == nil {
+					return
+				}
+
+				p, ok := rec.(Panic)
+				if !ok {
+					err, ok := rec.(error)
+					if !ok {
+						err = errors.New(fmt.Sprint(rec))
+					}
+					p = Panic{
+						Code: http.StatusInternalServerError,
+						Err:  err,
+					}
+				}
+
+				p.logger = logger
+				p.displayErrors = displayErrors
+
+				p.ServeHTTP(w, r)
+			}()
+
+			httpcontext.Set(r, errorKey, eh)
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// Returns the Error object from the request context.
+func Error(r *http.Request) ErrorHandler {
+	return httpcontext.Get(r, errorKey).(ErrorHandler)
+}
+
+// Calls HandleError on the Error object inside the request context.
+func Fail(r *http.Request, code int, err error) {
+	Error(r).HandleError(code, err)
+}
+
+// Calls MaybeError on the Error object inside the request context.
+func MaybeFail(r *http.Request, code int, err error) {
+	Error(r).MaybeError(code, err)
+}
+
+// Generic error handler function type.
+type ErrorHandlerFunc func(int, error)
+
+func (ehf ErrorHandlerFunc) HandleError(code int, err error) {
+	ehf(code, err)
+}
+
+func (ehf ErrorHandlerFunc) MaybeError(code int, err error) {
+	if err != nil {
+		ehf.HandleError(code, err)
+	}
+}
+
+// Standard error handler function.
+func HandleError(code int, err error) {
+	panic(Panic{
+		Code: code,
+		Err:  err,
+	})
+}
+
+// Data for the ErrorPage template.
+type ErrorPageData struct {
+	BackgroundColor string
+	ForegroundColor string
+	Code            int
+	Message         string
+}
+
+// HTML template for the standard HTML error page.
+var ErrorPage = template.Must(template.New("ErrorPage").Parse(`<!DOCTYPE HTML>
+<html>
+<head>
+	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+	<meta charset="utf8" />
+	<title>Error</title>
+	<style type="text/css">
+		body {
+			background-color: #{{.BackgroundColor}};
+			color: #{{.ForegroundColor}};
+		}
+	</style>
+</head>
+	<body>
+		<h1>HTTP Error {{.Code}}</h1>
+		<p>{{.Message}}</p>
+	</body>
+</html>
+`))
