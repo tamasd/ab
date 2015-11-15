@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/*
-Entity generator tool.
-*/
-package main
+package entitycmd
 
 import (
 	"fmt"
@@ -27,20 +24,7 @@ import (
 	"golang.org/x/tools/imports"
 )
 
-func main() {
-	abCmd := &cobra.Command{
-		Use:   "ab",
-		Short: "ab is a command line helper for the Alien Bunny framework",
-	}
-
-	abCmd.AddCommand(
-		createEntityCmd(),
-	)
-
-	abCmd.Execute()
-}
-
-func createEntityCmd() *cobra.Command {
+func CreateEntityCmd() *cobra.Command {
 	entityCmd := &cobra.Command{
 		Use:   "entity",
 		Short: "entity generator",

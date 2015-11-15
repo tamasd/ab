@@ -39,7 +39,7 @@ import (
 	"github.com/tamasd/hitch-session"
 )
 
-//go:generate ab --generate-service-struct-name=testUserService --output=password_entity_test.go entity TestUser
+//go:generate abt --generate-service-struct-name=testUserService --output=password_entity_test.go entity TestUser
 
 const base = "http://localhost:9997"
 const pw = `VmlX7sn_+ti(BC{<'@8>]xHAhLN!p}w=vbBiHxNXv{_7#lfO|f(GAjF<::7=aw/]`

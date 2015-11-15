@@ -14,8 +14,8 @@
 
 package abtesting
 
-//go:generate ab entity Test
-//go:generate ab --output=entity2.go --generate-service-struct-name=Service2 entity Test2
+//go:generate abt entity Test
+//go:generate abt --output=entity2.go --generate-service-struct-name=Service2 entity Test2
 
 type Test struct {
 	UUID       *string      `dbtype:"uuid" dbdefault:"uuid_generate_v4()" json:",omitempty"`

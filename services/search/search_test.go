@@ -35,7 +35,7 @@ import (
 	"github.com/tamasd/hitch-session"
 )
 
-//go:generate ab --generate-service-struct-name=testContentService --output=search_entity_test.go entity TestContent
+//go:generate abt --generate-service-struct-name=testContentService --output=search_entity_test.go entity TestContent
 
 const base = "http://localhost:9996"
 
