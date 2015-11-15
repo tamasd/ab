@@ -15,17 +15,28 @@
 package ab
 
 import (
+	"net"
 	"net/http"
 	"strings"
 )
 
-// Restricts access based on the IP address of the client. Only the specified addresses are allowed to connect.
+// Restricts access based on the IP address of the client. Only IP addresses in the given CIDR address ranges will be allowed.
 func RestrictAddressMiddleware(addresses ...string) func(http.Handler) http.Handler {
+	cidrnets := make([]*net.IPNet, len(addresses))
+	var err error
+	for i, address := range addresses {
+		_, cidrnets[i], err = net.ParseCIDR(address)
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reqAddress := strings.Split(r.RemoteAddr, ":")[0]
-			for _, address := range addresses {
-				if address == reqAddress {
+			ip := net.ParseIP(reqAddress)
+			for _, cidrnet := range cidrnets {
+				if cidrnet.Contains(ip) {
 					next.ServeHTTP(w, r)
 					return
 				}
@@ -34,6 +45,10 @@ func RestrictAddressMiddleware(addresses ...string) func(http.Handler) http.Hand
 			http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 		})
 	}
+}
+
+func RestrictPrivateAddressMiddleware() func(http.Handler) http.Handler {
+	return RestrictAddressMiddleware("10.255.255.255/8", "172.31.255.255/12", "192.168.255.255/16", "127.0.0.0/8")
 }
 
 // Constucts an URL to the redirect destination.

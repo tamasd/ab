@@ -147,11 +147,11 @@ func setupServer(c testConfig) {
 
 	s.Get("/restricted", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Render(r).Text("RESTRICTED")
-	}), RestrictAddressMiddleware("0.0.0.0"))
+	}), RestrictAddressMiddleware("192.168.255.255/8"))
 
 	s.Get("/restrictedok", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Render(r).Text("RestrictedOK")
-	}), RestrictAddressMiddleware("127.0.0.1"))
+	}), RestrictAddressMiddleware("127.0.0.1/8"))
 
 	s.Post("/decode", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		v := testDecode{}
