@@ -24,6 +24,7 @@ import (
 type HSTSConfig struct {
 	MaxAge            time.Duration
 	IncludeSubDomains bool
+	HostBlacklist     []string
 }
 
 func (c HSTSConfig) String() string {
@@ -44,11 +45,23 @@ func (c HSTSConfig) String() string {
 	return strings.Join(directives, "; ")
 }
 
+func (c HSTSConfig) isHostBlacklisted(host string) bool {
+	for _, blacklistedHost := range c.HostBlacklist {
+		if blacklistedHost == host {
+			return true
+		}
+	}
+
+	return false
+}
+
 func HTSTMiddleware(config HSTSConfig) func(http.Handler) http.Handler {
 	headerValue := config.String()
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Strict-Transport-Security", headerValue)
+			if !config.isHostBlacklisted(r.Host) {
+				w.Header().Set("Strict-Transport-Security", headerValue)
+			}
 			next.ServeHTTP(w, r)
 		})
 	}
