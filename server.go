@@ -15,6 +15,7 @@
 package ab
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"log"
 	"net/http"
@@ -144,6 +145,8 @@ type Server struct {
 
 	// Logger for the server.
 	Logger *log.Logger
+
+	TLSConfig *tls.Config
 }
 
 // Creates a new server with a given cookie secret.
@@ -195,9 +198,10 @@ func (s *Server) RegisterService(svc Service) {
 // Starts an HTTPS server.
 func (s *Server) StartHTTPS(addr, certFile, keyFile string) {
 	srv := &http.Server{
-		Addr:     addr,
-		Handler:  s.Hitch.Handler(),
-		ErrorLog: s.Logger,
+		Addr:      addr,
+		Handler:   s.Hitch.Handler(),
+		ErrorLog:  s.Logger,
+		TLSConfig: s.TLSConfig,
 	}
 
 	s.Logger.Printf("Starting server on %s\n", addr)
