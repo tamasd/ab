@@ -19,6 +19,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -69,6 +70,8 @@ type ServerConfig struct {
 
 	// Enables HSTS (RFC 6797). Strongly recommended for HTTPS websites.
 	HSTS *HSTSConfig
+
+	CookieURL *url.URL
 }
 
 // Sets up a Server with recommended middlewares.
@@ -109,7 +112,7 @@ func PetBunny(cfg ServerConfig, topMiddlewares ...func(http.Handler) http.Handle
 
 	s.Use(RendererMiddleware)
 
-	s.Use(session.HitchSession(cfg.CookiePrefix, cfg.CookieSecret, time.Hour*24*365))
+	s.Use(session.HitchSession(cfg.CookiePrefix, cfg.CookieSecret, cfg.CookieURL, time.Hour*24*365))
 
 	s.Use(CSRFCookieMiddleware(cfg.CookiePrefix, time.Hour*24*365))
 
