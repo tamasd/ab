@@ -25,7 +25,6 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/nbio/hitch"
-	"github.com/tamasd/hitch-requestlogger"
 )
 
 // The service is a concept than an actual distinction from regular endpoints. A service is an unit of functionality. It probably has database objects, that will be checked an installed when the service is added to the server.
@@ -93,7 +92,7 @@ func PetBunny(cfg ServerConfig, topMiddlewares ...func(http.Handler) http.Handle
 
 	if cfg.DevelopmentMode {
 		logger := log.New(os.Stdout, "", 0)
-		s.Use(requestlogger.HitchRequestLogger(logger))
+		s.Use(RequestLoggerMiddleware(logger))
 	}
 
 	if cfg.HSTS != nil {
