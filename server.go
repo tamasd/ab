@@ -26,7 +26,6 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/nbio/hitch"
 	"github.com/tamasd/hitch-requestlogger"
-	"github.com/tamasd/hitch-session"
 )
 
 // The service is a concept than an actual distinction from regular endpoints. A service is an unit of functionality. It probably has database objects, that will be checked an installed when the service is added to the server.
@@ -50,7 +49,7 @@ type ServerConfig struct {
 	// Prefix for the session cookie.
 	CookiePrefix string
 	// Secret for the session cookie's signature. This must not be empty.
-	CookieSecret session.SecretKey
+	CookieSecret SecretKey
 
 	// Connection string for the database.
 	PGConnectString string
@@ -112,7 +111,7 @@ func PetBunny(cfg ServerConfig, topMiddlewares ...func(http.Handler) http.Handle
 
 	s.Use(RendererMiddleware)
 
-	s.Use(session.HitchSession(cfg.CookiePrefix, cfg.CookieSecret, cfg.CookieURL, time.Hour*24*365))
+	s.Use(SessionMiddleware(cfg.CookiePrefix, cfg.CookieSecret, cfg.CookieURL, time.Hour*24*365))
 
 	s.Use(CSRFCookieMiddleware(cfg.CookiePrefix, time.Hour*24*365, cfg.CookieURL))
 

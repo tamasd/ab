@@ -20,8 +20,6 @@ import (
 	"net/http"
 	"net/url"
 	"time"
-
-	"github.com/tamasd/hitch-session"
 )
 
 // This middleware enforces the correct X-CSRF-Token header on all POST, PUT, DELETE, PATCH requests.
@@ -30,7 +28,7 @@ import (
 func CSRFMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" || r.Method == "PUT" || r.Method == "DELETE" || r.Method == "PATCH" {
-			s := session.GetSession(r)
+			s := GetSession(r)
 			token := s["_csrf"]
 
 			userToken := r.Header.Get("X-CSRF-Token")
@@ -51,7 +49,7 @@ func CSRFMiddleware(next http.Handler) http.Handler {
 func CSRFGetMiddleware(urlParam string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			s := session.GetSession(r)
+			s := GetSession(r)
 			token := s["_csrf"]
 
 			userToken := r.URL.Query().Get(urlParam)
@@ -93,7 +91,7 @@ func CSRFCookieMiddleware(prefix string, expiresAfter time.Duration, cookieURL *
 //
 // If the token is not exists, the function generates one and places it inside the session.
 func GetCSRFToken(r *http.Request) string {
-	s := session.GetSession(r)
+	s := GetSession(r)
 	token := s["_csrf"]
 
 	if token == "" {

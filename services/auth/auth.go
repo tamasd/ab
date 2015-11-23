@@ -26,7 +26,6 @@ import (
 	"github.com/nbio/hitch"
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/util"
-	"github.com/tamasd/hitch-session"
 )
 
 type authProviderLabel struct {
@@ -113,7 +112,7 @@ func (s *Service) Register(h *hitch.Hitch) error {
 	}))
 
 	h.Get("/api/auth/logout", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := session.GetSession(r)
+		sess := ab.GetSession(r)
 		for k := range sess {
 			delete(sess, k)
 		}

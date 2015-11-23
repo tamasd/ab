@@ -10,7 +10,6 @@ import (
 	"github.com/nbio/hitch"
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/util"
-	"github.com/tamasd/hitch-session"
 )
 
 type OAuth1ProviderDelegate interface {
@@ -49,7 +48,7 @@ func (p *OAuth1Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 		if err != nil {
 			ab.Fail(r, http.StatusInternalServerError, nil)
 		}
-		s := session.GetSession(r)
+		s := ab.GetSession(r)
 		s["oauth_"+name+"_tmpcred"] = util.EncryptString(tmpCred.Token + ":" + tmpCred.Secret)
 
 		url := c.AuthorizationURL(tmpCred, nil)
@@ -57,7 +56,7 @@ func (p *OAuth1Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 	}), ab.CSRFGetMiddleware("token"))
 
 	h.Get("/api/auth/"+name+"/callback", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s := session.GetSession(r)
+		s := ab.GetSession(r)
 		tmpCredEncoded := util.DecryptString(s["oauth_"+name+"_tmpcred"])
 		if tmpCredEncoded == "" {
 			ab.Fail(r, http.StatusBadRequest, nil)

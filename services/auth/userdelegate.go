@@ -18,7 +18,6 @@ import (
 	"net/http"
 
 	"github.com/tamasd/ab"
-	"github.com/tamasd/hitch-session"
 )
 
 // Delegate interface for user management. This decouples the user management from the auth service.
@@ -40,7 +39,7 @@ type SessionUserDelegate struct {
 }
 
 func (ud *SessionUserDelegate) IsLoggedIn(r *http.Request) bool {
-	uid := session.GetSession(r)["uid"]
+	uid := ab.GetSession(r)["uid"]
 
 	if uid == "" {
 		return false
@@ -67,11 +66,11 @@ func (ud *SessionUserDelegate) IsLoggedIn(r *http.Request) bool {
 }
 
 func (ud *SessionUserDelegate) CurrentUser(r *http.Request) string {
-	return session.GetSession(r)["uid"]
+	return ab.GetSession(r)["uid"]
 }
 
 func (ud *SessionUserDelegate) LoginUser(r *http.Request, uuid string) {
-	session.GetSession(r)["uid"] = uuid
+	ab.GetSession(r)["uid"] = uuid
 }
 
 var _ UserDelegate = &MultiUserDelegate{}

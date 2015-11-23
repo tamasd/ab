@@ -36,7 +36,6 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/util"
-	"github.com/tamasd/hitch-session"
 )
 
 //go:generate abt --generate-service-struct-name=testUserService --output=password_entity_test.go entity TestUser
@@ -58,7 +57,7 @@ type TestUser struct {
 
 func setupServer() {
 	s := ab.PetBunny(ab.ServerConfig{
-		CookieSecret:    session.SecretKey{161, 185, 93, 43, 42, 206, 51, 211, 53, 42, 189, 11, 238, 185, 174, 177, 101, 220, 127, 206, 220, 255, 69, 65, 85, 144, 126, 171, 98, 28, 109, 64, 177, 186, 89, 138, 116, 226, 219, 186, 164, 208, 49, 213, 180, 236, 184, 65, 211, 126, 182, 133, 98, 81, 148, 9, 205, 46, 242, 68, 205, 245, 221, 156},
+		CookieSecret:    ab.SecretKey{161, 185, 93, 43, 42, 206, 51, 211, 53, 42, 189, 11, 238, 185, 174, 177, 101, 220, 127, 206, 220, 255, 69, 65, 85, 144, 126, 171, 98, 28, 109, 64, 177, 186, 89, 138, 116, 226, 219, 186, 164, 208, 49, 213, 180, 236, 184, 65, 211, 126, 182, 133, 98, 81, 148, 9, 205, 46, 242, 68, 205, 245, 221, 156},
 		PGConnectString: config.PGConnectString,
 		Logger:          log.New(ioutil.Discard, "", 0),
 		AssetsDir:       "./",
@@ -79,7 +78,7 @@ func setupServer() {
 	s.RegisterService(tus)
 
 	s.Get("/me", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := session.GetSession(r)
+		sess := ab.GetSession(r)
 		ab.Render(r).Text(sess["uid"])
 	}))
 

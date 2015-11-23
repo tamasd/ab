@@ -36,7 +36,6 @@ import (
 	"github.com/nbio/hitch"
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/util"
-	"github.com/tamasd/hitch-session"
 	"golang.org/x/crypto/scrypt"
 )
 
@@ -150,7 +149,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 	}), ab.CSRFGetMiddleware("token"), NotLoggedInMiddleware(user))
 
 	h.Post("/api/auth/"+name+"/login", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := session.GetSession(r)
+		sess := ab.GetSession(r)
 		db := ab.GetDB(r)
 
 		ld := PasswordLoginData{}
@@ -186,7 +185,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 	}), NotLoggedInMiddleware(user))
 
 	h.Post("/api/auth/"+name+"/2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := session.GetSession(r)
+		sess := ab.GetSession(r)
 		tmpUser := sess["2fa_user"]
 		if tmpUser == "" {
 			ab.Fail(r, http.StatusBadRequest, nil)
@@ -213,7 +212,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 	}), NotLoggedInMiddleware(user))
 
 	h.Get("/api/auth/"+name+"/add2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := session.GetSession(r)
+		sess := ab.GetSession(r)
 		sec := make([]byte, 6)
 		_, err := io.ReadFull(rand.Reader, sec)
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
@@ -237,7 +236,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 	}), ab.CSRFGetMiddleware("token"), LoggedInMiddleware(user))
 
 	h.Post("/api/auth/"+name+"/add2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := session.GetSession(r)
+		sess := ab.GetSession(r)
 		secret := util.DecryptString(sess["2fa_secret"])
 
 		if secret == "" {
@@ -287,7 +286,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 	}), LoggedInMiddleware(user))
 
 	h.Post("/api/auth/"+name+"/changepassword", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := session.GetSession(r)
+		sess := ab.GetSession(r)
 		db := ab.GetTransaction(r)
 		uid := user.CurrentUser(r)
 		otlcode := sess["otlcode"]
@@ -361,7 +360,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		otlcode, err := CreateToken(db, uuid, "otlcode", &exp)
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 
-		sess := session.GetSession(r)
+		sess := ab.GetSession(r)
 		sess["otlcode"] = otlcode
 		user.LoginUser(r, uuid)
 	}), NotLoggedInMiddleware(user))
