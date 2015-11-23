@@ -18,6 +18,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/tamasd/hitch-session"
@@ -67,16 +68,20 @@ func CSRFGetMiddleware(urlParam string) func(http.Handler) http.Handler {
 // This middleware creates a cookie with the CSRF token.
 //
 // The cookie will be named prefix+"_CSRF".
-func CSRFCookieMiddleware(prefix string, expiresAfter time.Duration) func(http.Handler) http.Handler {
+func CSRFCookieMiddleware(prefix string, expiresAfter time.Duration, cookieURL *url.URL) func(http.Handler) http.Handler {
+	if cookieURL == nil {
+		cookieURL = &url.URL{}
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := GetCSRFToken(r)
 			http.SetCookie(w, &http.Cookie{
 				Name:     prefix + "_CSRF",
 				Value:    token,
-				Path:     "/",
 				HttpOnly: false,
-				Secure:   r.URL.Scheme == "https",
+				Path:     cookieURL.Path,
+				Domain:   cookieURL.Host,
+				Secure:   cookieURL.Scheme == "https",
 				Expires:  time.Now().Add(expiresAfter),
 			})
 			next.ServeHTTP(w, r)

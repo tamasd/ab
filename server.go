@@ -114,7 +114,7 @@ func PetBunny(cfg ServerConfig, topMiddlewares ...func(http.Handler) http.Handle
 
 	s.Use(session.HitchSession(cfg.CookiePrefix, cfg.CookieSecret, cfg.CookieURL, time.Hour*24*365))
 
-	s.Use(CSRFCookieMiddleware(cfg.CookiePrefix, time.Hour*24*365))
+	s.Use(CSRFCookieMiddleware(cfg.CookiePrefix, time.Hour*24*365, cfg.CookieURL))
 
 	s.Use(CSRFMiddleware)
 	s.Get("/api/token", http.HandlerFunc(CSRFTokenHandler))
