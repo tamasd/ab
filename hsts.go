@@ -59,7 +59,7 @@ func HTSTMiddleware(config HSTSConfig) func(http.Handler) http.Handler {
 	headerValue := config.String()
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !config.isHostBlacklisted(r.Host) {
+			if r.TLS != nil && !config.isHostBlacklisted(r.Host) {
 				w.Header().Set("Strict-Transport-Security", headerValue)
 			}
 			next.ServeHTTP(w, r)
