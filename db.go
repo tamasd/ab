@@ -16,7 +16,6 @@ package ab
 
 import (
 	"database/sql"
-	"log"
 	"net"
 	"net/http"
 	"time"
@@ -53,7 +52,7 @@ func GetTransaction(r *http.Request) DB {
 
 	tx, err := dbconn.Begin()
 	if err != nil {
-		log.Println(err)
+		LogVerbose(r).Println(err)
 		return nil
 	}
 
@@ -85,7 +84,6 @@ func retryDBConn(connectString string, tries uint) *sql.DB {
 	conn, err := connectToDB(connectString)
 	if err != nil {
 		if operr, ok := err.(*net.OpError); ok && operr.Op == "dial" && tries > 0 {
-			log.Println("Retrying connection to db")
 			<-time.After(time.Second)
 			return retryDBConn(connectString, tries-1)
 		}

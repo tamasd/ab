@@ -27,6 +27,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"golang.org/x/crypto/ssh"
@@ -169,4 +170,10 @@ func DecryptString(msg string) string {
 	}
 
 	return string(Decrypt(decoded))
+}
+
+var colorCodeRegex = regexp.MustCompile(`\[[0-9;]+m`)
+
+func StripTerminalColorCodes(s string) string {
+	return colorCodeRegex.ReplaceAllString(s, "")
 }

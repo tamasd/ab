@@ -2,13 +2,13 @@ package auth
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"strings"
 
 	"github.com/garyburd/go-oauth/oauth"
 	"github.com/nbio/hitch"
 	"github.com/tamasd/ab"
+	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/util"
 )
 
@@ -112,10 +112,10 @@ func (p *OAuth1Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 	}), ab.CSRFGetMiddleware("token"))
 }
 
-func GetOAuth1Client(db ab.DB, provider OAuth1ProviderDelegate, uid string) *oauth.Credentials {
+func GetOAuth1Client(db ab.DB, logger *log.Log, provider OAuth1ProviderDelegate, uid string) *oauth.Credentials {
 	token := ""
 	if err := db.QueryRow("SELECT secret FROM auth WHERE uuid = $1 AND provider = $2", uid, provider.GetName()).Scan(&token); err != nil {
-		log.Println(err)
+		logger.User().Println(err)
 		return nil
 	}
 
@@ -123,7 +123,7 @@ func GetOAuth1Client(db ab.DB, provider OAuth1ProviderDelegate, uid string) *oau
 
 	c := &oauth.Credentials{}
 	if err := json.Unmarshal([]byte(token), c); err != nil {
-		log.Println(err)
+		logger.User().Println(err)
 		return nil
 	}
 

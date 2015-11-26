@@ -27,6 +27,7 @@ import (
 
 	"github.com/nbio/hitch"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/tamasd/ab/lib/log"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -73,6 +74,7 @@ func TestHTTPScenario(t *testing.T) {
 		key := getSecretKey()
 
 		h := hitch.New()
+		h.Use(DefaultLoggerMiddleware(log.LOG_OFF))
 		h.Use(SessionMiddleware("", key, nil, time.Hour))
 		h.Post("/set", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			data, _ := ioutil.ReadAll(r.Body)

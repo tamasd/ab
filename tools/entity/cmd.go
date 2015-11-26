@@ -16,15 +16,15 @@ package entitycmd
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/tamasd/ab/entity"
+	"github.com/tamasd/ab/lib/log"
 	"golang.org/x/tools/imports"
 )
 
-func CreateEntityCmd() *cobra.Command {
+func CreateEntityCmd(logger *log.Log) *cobra.Command {
 	entityCmd := &cobra.Command{
 		Use:   "entity",
 		Short: "entity generator",
@@ -64,7 +64,8 @@ func CreateEntityCmd() *cobra.Command {
 		e.URLIDField = *urlidfield
 		e.IDField = *idfield
 		if err != nil {
-			log.Fatalln(err)
+			logger.User().Println(err)
+			os.Exit(1)
 		}
 
 		et := entity.EntityTemplate{
@@ -96,7 +97,8 @@ func CreateEntityCmd() *cobra.Command {
 		rendered := et.String()
 		processed, err := imports.Process("", []byte(rendered), nil)
 		if err != nil {
-			log.Fatalln(err)
+			logger.User().Println(err)
+			os.Exit(1)
 		}
 		rendered = string(processed)
 		if *output == "-" {
@@ -104,13 +106,15 @@ func CreateEntityCmd() *cobra.Command {
 		} else {
 			f, err := os.Create(*output)
 			if err != nil {
-				log.Fatalln(err)
+				logger.User().Println(err)
+				os.Exit(1)
 			}
 			defer f.Close()
 
 			_, err = f.WriteString(rendered)
 			if err != nil {
-				log.Fatalln(err)
+				logger.User().Println(err)
+				os.Exit(1)
 			}
 		}
 	}

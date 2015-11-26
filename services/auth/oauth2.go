@@ -2,11 +2,11 @@ package auth
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 
 	"github.com/nbio/hitch"
 	"github.com/tamasd/ab"
+	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/util"
 	"golang.org/x/oauth2"
 )
@@ -101,10 +101,10 @@ func (p *OAuth2Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 	}), ab.CSRFGetMiddleware("state"))
 }
 
-func GetOAuth2Client(db ab.DB, provider OAuth2ProviderDelegate, uid string) *http.Client {
+func GetOAuth2Client(db ab.DB, logger *log.Log, provider OAuth2ProviderDelegate, uid string) *http.Client {
 	token := ""
 	if err := db.QueryRow("SELECT secret FROM auth WHERE uuid = $1 AND provider = $2", uid, provider.GetName()).Scan(&token); err != nil {
-		log.Println(err)
+		logger.User().Println(err)
 		return nil
 	}
 
@@ -112,19 +112,19 @@ func GetOAuth2Client(db ab.DB, provider OAuth2ProviderDelegate, uid string) *htt
 
 	t := &oauth2.Token{}
 	if err := json.Unmarshal([]byte(token), t); err != nil {
-		log.Println(err)
+		logger.User().Println(err)
 		return nil
 	}
 	cfg := provider.GetConfig()
 	client := cfg.Client(oauth2.NoContext, t)
 	tok, err := json.Marshal(t)
 	if err != nil {
-		log.Println(err)
+		logger.User().Println(err)
 		return nil
 	}
 
 	if _, err = db.Exec("UPDATE auth SET secret = $1 WHERE uuid = $2 AND provider = $3", string(tok), uid, provider.GetName()); err != nil {
-		log.Println(err)
+		logger.User().Println(err)
 		return nil
 	}
 

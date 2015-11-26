@@ -21,7 +21,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -57,8 +56,10 @@ func SessionMiddleware(prefix string, key SecretKey, cookieURL *url.URL, expires
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sess, err := readCookieFromRequest(r, prefix, key)
 			if err != nil {
-				log.Println(err)
+				LogVerbose(r).Println(err)
 			}
+
+			LogTrace(r).Println(sess)
 
 			httpcontext.Set(r, session_context_key, sess)
 
@@ -257,7 +258,9 @@ func (srw *sessionResponseWriter) WriteHeader(code int) {
 	}
 
 	sess := GetSession(srw.r)
+	LogTrace(srw.r).Println(sess)
 	cookie := sess.cookie(srw.key, srw.prefix, srw.cookieURL, srw.expiresAfter)
+	LogTrace(srw.r).Println(cookie)
 	http.SetCookie(srw.w, cookie)
 
 	srw.w.WriteHeader(code)

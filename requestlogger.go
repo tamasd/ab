@@ -16,7 +16,7 @@ package ab
 
 import (
 	"fmt"
-	"log"
+	"io"
 	"net/http"
 	"time"
 
@@ -24,15 +24,18 @@ import (
 )
 
 // Creates a request logger middleware.
-//
-// The l parameter defines a logger to use. If l is nil, then the standard logger will be used.
-func RequestLoggerMiddleware(l *log.Logger) func(http.Handler) http.Handler {
+func RequestLoggerMiddleware(lw io.Writer) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var start, end int64
 			start = time.Now().UnixNano()
 
 			path := r.URL.Path
+			host := r.Host
+			protocol := "http"
+			if r.TLS != nil {
+				protocol = "https"
+			}
 
 			rw := &requestLoggerResponseWriter{
 				ResponseWriter: w,
@@ -68,11 +71,7 @@ func RequestLoggerMiddleware(l *log.Logger) func(http.Handler) http.Handler {
 				code = gocolorize.NewColor("white+b:red").Paint(code)
 			}
 
-			if l == nil {
-				log.Printf("%s\t%s\t%s\t%s\n", gocolorize.NewColor("cyan").Paint(r.Method), gocolorize.NewColor("blue").Paint(path), code, time)
-			} else {
-				l.Printf("%s\t%s\t%s\t%s\n", gocolorize.NewColor("cyan").Paint(r.Method), gocolorize.NewColor("blue").Paint(path), code, time)
-			}
+			fmt.Fprintf(lw, "%s\t%s\t%s\t%s\n", gocolorize.NewColor("cyan").Paint(r.Method), gocolorize.NewColor("blue").Paint(protocol+"://"+host+path), code, time)
 		})
 	}
 }

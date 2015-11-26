@@ -15,19 +15,48 @@
 package main
 
 import (
+	crand "crypto/rand"
+	"encoding/binary"
+	mrand "math/rand"
+
 	"github.com/spf13/cobra"
+	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/tools/entity"
 )
 
 func main() {
+	seedRandom()
+
+	logger := log.DefaultOSLogger()
+
 	abtCmd := &cobra.Command{
 		Use:   "abt",
-		Short: "abt is a command line helper for the Alien Bunny framework",
+		Short: "abt is a command line helper for the Alien Bunny kit",
+	}
+
+	var (
+		verbose = abtCmd.PersistentFlags().Bool("verbose", false, "Turns on verbose mode")
+		trace   = abtCmd.PersistentFlags().Bool("trace", false, "Turns on tracing and debug mode")
+	)
+
+	abtCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if *trace {
+			logger.Level = log.LOG_TRACE
+		} else if *verbose {
+			logger.Level = log.LOG_VERBOSE
+		}
 	}
 
 	abtCmd.AddCommand(
-		entitycmd.CreateEntityCmd(),
+		entitycmd.CreateEntityCmd(logger),
 	)
 
 	abtCmd.Execute()
+}
+
+func seedRandom() {
+	b := make([]byte, 8)
+	crand.Read(b)
+	s := binary.BigEndian.Uint64(b)
+	mrand.Seed(int64(s))
 }

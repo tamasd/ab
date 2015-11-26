@@ -18,10 +18,10 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 
 	"github.com/nbio/httpcontext"
+	"github.com/tamasd/ab/util"
 )
 
 const errorKey = "aberror"
@@ -86,7 +86,6 @@ type Panic struct {
 	Code          int
 	Err           error
 	displayErrors bool
-	logger        *log.Logger
 }
 
 func (p Panic) Error() string {
@@ -128,14 +127,28 @@ func (p Panic) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	logs := ""
+	if p.displayErrors {
+		logs = util.StripTerminalColorCodes(RequestLogs(r))
+	}
+
+	pageData.Logs = logs
+
 	if p.Err != nil {
-		p.logger.Println(p.Err)
+		LogVerbose(r).Println(p.Err)
+	}
+
+	jsonMap := map[string]string{"message": pageData.Message}
+	text := pageData.Message
+	if p.displayErrors {
+		jsonMap["logs"] = logs
+		text += "\n\n" + logs
 	}
 
 	rd.
 		HTML(ErrorPage, pageData).
-		JSON(map[string]string{"message": pageData.Message}).
-		Text(pageData.Message)
+		JSON(jsonMap).
+		Text(text)
 
 	rd.Render(w, r)
 }
@@ -163,7 +176,7 @@ func decideColor(code int, other, warn, err string) string {
 // The caller of the function should also supply a logger that will log the errors. The displayErrors sends the error messages to the user. This is useful in a development environment.
 //
 // This middleware is automatically added to the Server with PetBunny.
-func ErrorHandlerMiddleware(eh ErrorHandler, logger *log.Logger, displayErrors bool) func(http.Handler) http.Handler {
+func ErrorHandlerMiddleware(eh ErrorHandler, displayErrors bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
@@ -184,7 +197,6 @@ func ErrorHandlerMiddleware(eh ErrorHandler, logger *log.Logger, displayErrors b
 					}
 				}
 
-				p.logger = logger
 				p.displayErrors = displayErrors
 
 				p.ServeHTTP(w, r)
@@ -239,6 +251,7 @@ type ErrorPageData struct {
 	ForegroundColor string
 	Code            int
 	Message         string
+	Logs            string
 }
 
 // HTML template for the standard HTML error page.
@@ -258,6 +271,8 @@ var ErrorPage = template.Must(template.New("ErrorPage").Parse(`<!DOCTYPE HTML>
 	<body>
 		<h1>HTTP Error {{.Code}}</h1>
 		<p>{{.Message}}</p>
+		<hr/>
+		<p>{{.Logs}}</p>
 	</body>
 </html>
 `))

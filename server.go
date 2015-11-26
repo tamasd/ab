@@ -17,7 +17,8 @@ package ab
 import (
 	"crypto/tls"
 	"database/sql"
-	"log"
+	"io/ioutil"
+	stdlog "log"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/nbio/hitch"
+	"github.com/tamasd/ab/lib/log"
 )
 
 // The service is a concept than an actual distinction from regular endpoints. A service is an unit of functionality. It probably has database objects, that will be checked an installed when the service is added to the server.
@@ -57,17 +59,15 @@ type ServerConfig struct {
 	// Number of maximum idle connections.
 	DBMaxIdleConn int
 
-	// Enables verbose logging, and logging to the HTML output.
-	DevelopmentMode bool
-
 	// The server's error handler. Defaults to HandleError().
 	ErrorHandler ErrorHandler
 
-	// Logger for the server.
-	Logger *log.Logger
+	Level log.LogLevel
 
 	// Enables HSTS (RFC 6797). Strongly recommended for HTTPS websites.
 	HSTS *HSTSConfig
+
+	Logger *log.Log
 
 	CookieURL *url.URL
 }
@@ -86,14 +86,20 @@ func PetBunny(cfg ServerConfig, topMiddlewares ...func(http.Handler) http.Handle
 		s.Logger = cfg.Logger
 	}
 
+	s.Logger.Level = cfg.Level
+
 	if len(topMiddlewares) > 0 {
 		s.Use(topMiddlewares...)
 	}
 
-	if cfg.DevelopmentMode {
-		logger := log.New(os.Stdout, "", 0)
-		s.Use(RequestLoggerMiddleware(logger))
+	requestLoggerOut := ioutil.Discard
+	if cfg.Level > log.LOG_USER {
+		requestLoggerOut = os.Stdout
 	}
+
+	s.Use(RequestLoggerMiddleware(requestLoggerOut))
+
+	s.Use(DefaultLoggerMiddleware(cfg.Level))
 
 	if cfg.HSTS != nil {
 		s.Use(HTSTMiddleware(*cfg.HSTS))
@@ -106,7 +112,7 @@ func PetBunny(cfg ServerConfig, topMiddlewares ...func(http.Handler) http.Handle
 	if cfg.ErrorHandler == nil {
 		cfg.ErrorHandler = ErrorHandlerFunc(HandleError)
 	}
-	s.Use(ErrorHandlerMiddleware(cfg.ErrorHandler, s.Logger, cfg.DevelopmentMode))
+	s.Use(ErrorHandlerMiddleware(cfg.ErrorHandler, cfg.Level > log.LOG_USER))
 
 	s.Use(RendererMiddleware)
 
@@ -142,11 +148,8 @@ func PetBunny(cfg ServerConfig, topMiddlewares ...func(http.Handler) http.Handle
 // The main server struct.
 type Server struct {
 	*hitch.Hitch
-	conn *sql.DB
-
-	// Logger for the server.
-	Logger *log.Logger
-
+	conn      *sql.DB
+	Logger    *log.Log
 	TLSConfig *tls.Config
 }
 
@@ -154,8 +157,8 @@ type Server struct {
 func NewServer(conn *sql.DB) *Server {
 	s := &Server{
 		Hitch:  hitch.New(),
-		Logger: log.New(os.Stderr, "", log.LstdFlags),
 		conn:   conn,
+		Logger: log.DefaultOSLogger(),
 	}
 
 	return s
@@ -197,15 +200,18 @@ func (s *Server) RegisterService(svc Service) {
 }
 
 // Starts an HTTPS server.
-func (s *Server) StartHTTPS(addr, certFile, keyFile string) {
+func (s *Server) StartHTTPS(addr, certFile, keyFile string) error {
 	srv := &http.Server{
 		Addr:      addr,
 		Handler:   s.Hitch.Handler(),
-		ErrorLog:  s.Logger,
 		TLSConfig: s.TLSConfig,
 	}
 
-	s.Logger.Printf("Starting server on %s\n", addr)
+	s.Logger.User().Printf("Starting server on %s\n", addr)
+
+	if stdlogger, ok := s.Logger.User().(*stdlog.Logger); ok {
+		srv.ErrorLog = stdlogger
+	}
 
 	var err error
 	if certFile != "" && keyFile != "" {
@@ -214,12 +220,12 @@ func (s *Server) StartHTTPS(addr, certFile, keyFile string) {
 		err = srv.ListenAndServe()
 	}
 
-	log.Fatal(err)
+	return err
 }
 
 // Starts an HTTP server.
-func (s *Server) StartHTTP(addr string) {
-	s.StartHTTPS(addr, "", "")
+func (s *Server) StartHTTP(addr string) error {
+	return s.StartHTTPS(addr, "", "")
 }
 
 // Redirects HTTP requests to HTTPS.

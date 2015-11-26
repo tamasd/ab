@@ -18,8 +18,6 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
-	"io/ioutil"
-	"log"
 	"math/rand"
 	"net/http"
 	"net/http/cookiejar"
@@ -31,6 +29,7 @@ import (
 	"github.com/naoina/toml"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/tamasd/ab"
+	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/util"
 )
 
@@ -52,7 +51,8 @@ type TestContent struct {
 }
 
 type testContentSearchServiceDelegate struct {
-	db ab.DB
+	db     ab.DB
+	logger *log.Log
 }
 
 func (t *testContentSearchServiceDelegate) IndexEntity(entity ab.Entity) []IndexData {
@@ -68,7 +68,7 @@ func (t *testContentSearchServiceDelegate) IndexEntity(entity ab.Entity) []Index
 func (t *testContentSearchServiceDelegate) LoadEntities(uuids []string) []ab.Entity {
 	contents, err := selectTestContentFromQuery(t.db, "SELECT "+testcontentFields+" FROM testcontent t WHERE uuid IN ("+util.GeneratePlaceholders(1, uint(len(uuids))+1)+")", util.StringSliceToInterfaceSlice(uuids)...)
 	if err != nil {
-		log.Println(err)
+		t.logger.User().Println(err)
 		return []ab.Entity{}
 	}
 
@@ -84,13 +84,13 @@ func setupServer() (ab.DB, *SearchService) {
 	s := ab.PetBunny(ab.ServerConfig{
 		CookieSecret:    ab.SecretKey{161, 185, 93, 43, 42, 206, 51, 211, 53, 42, 189, 11, 238, 185, 174, 177, 101, 220, 127, 206, 220, 255, 69, 65, 85, 144, 126, 171, 98, 28, 109, 64, 177, 186, 89, 138, 116, 226, 219, 186, 164, 208, 49, 213, 180, 236, 184, 65, 211, 126, 182, 133, 98, 81, 148, 9, 205, 46, 242, 68, 205, 245, 221, 156},
 		PGConnectString: config.PGConnectString,
-		Logger:          log.New(ioutil.Discard, "", 0),
 		AssetsDir:       "./",
 	})
 
 	s.RegisterService(&testContentService{})
 	searchDelegate := &testContentSearchServiceDelegate{
-		db: s.GetDBConnection(),
+		logger: log.DefaultOSLogger(),
+		db:     s.GetDBConnection(),
 	}
 	searchService := NewSearchService(s.GetDBConnection(), nil)
 	searchService.AddDelegate("TestContent", searchDelegate)
@@ -121,11 +121,11 @@ func mockData(db ab.DB, s *SearchService) {
 		words = append(words, tw[rand.Intn(len(tw))], cw[rand.Intn(len(cw))])
 
 		if err = c.Insert(db); err != nil {
-			log.Fatalln(err)
+			panic(err)
 		}
 
 		if err = s.IndexEntity("TestContent", c); err != nil {
-			log.Fatalln(err)
+			panic(err)
 		}
 	}
 }

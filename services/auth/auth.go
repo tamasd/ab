@@ -64,12 +64,12 @@ func NewService(baseURL string, user UserDelegate, conn ab.DB, providers ...Auth
 }
 
 func (s *Service) SchemaInstalled(db ab.DB) bool {
-	return ab.TableExists(db, "auth")
+	return ab.TableExists(db, "auth") && ab.TableExists(db, "token")
 }
 
 func (s *Service) SchemaSQL() string {
 	return `
-	CREATE TABLE auth (
+	CREATE TABLE IF NOT EXISTS auth (
 		uuid uuid NOT NULL,
 		authid character varying(256) NOT NULL,
 		secret text NOT NULL,
@@ -79,7 +79,7 @@ func (s *Service) SchemaSQL() string {
 		CONSTRAINT auth_authid_check CHECK (authid::text <> ''::text)
 	);
 
-	CREATE TABLE token (
+	CREATE TABLE IF NOT EXISTS token (
 		uuid uuid NOT NULL,
 		category character varying NOT NULL,
 		token character(128) NOT NULL,
