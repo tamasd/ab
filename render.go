@@ -184,7 +184,7 @@ func (r *Renderer) CSVChannel(records <-chan []string) *Renderer {
 //
 // The records are generated with a generator function. If the function
 // returns an error, the streaming to the output stops.
-func (r *Renderer) CSVGenerator(recgen func(http.Flusher) ([]string, err)) *Renderer {
+func (r *Renderer) CSVGenerator(recgen func(http.Flusher) ([]string, error)) *Renderer {
 	return r.AddOffer("text/csv", func(w http.ResponseWriter) {
 		csvw := csv.NewWriter(w)
 		for {
