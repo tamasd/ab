@@ -15,7 +15,9 @@
 package ab
 
 import (
+	"encoding/csv"
 	"encoding/json"
+	"encoding/xml"
 	"html/template"
 	"io"
 	"net/http"
@@ -135,6 +137,63 @@ func (r *Renderer) HTML(t *template.Template, v interface{}) *Renderer {
 func (r *Renderer) Text(t string) *Renderer {
 	return r.AddOffer("text/plain", func(w http.ResponseWriter) {
 		w.Write([]byte(t))
+	})
+}
+
+// Adds XML offer for the Renderer object.
+//
+// If pretty is set, the XML will be indented.
+// Also text/xml content type header will be sent instead of application/xml.
+func (r *Renderer) XML(v interface{}, pretty bool) *Renderer {
+	mt := "application/xml"
+	if pretty {
+		mt = "text/xml"
+	}
+
+	return r.AddOffer(mt, func(w http.ResponseWriter) {
+		e := xml.NewEncoder(w)
+		if pretty {
+			e.Indent("", "\t")
+		}
+		e.Encode(v)
+	})
+}
+
+// Adds a CSV offer for the Renderer object.
+//
+// Use this function for smaller CSV responses.
+func (r *Renderer) CSV(records [][]string) *Renderer {
+	return r.AddOffer("text/csv", func(w http.ResponseWriter) {
+		csv.NewWriter(w).WriteAll(records)
+	})
+}
+
+// Adds a CSV offer for the Renderer object.
+//
+// The records are streamed through a channel.
+func (r *Renderer) CSVChannel(records <-chan []string) *Renderer {
+	return r.AddOffer("text/csv", func(w http.ResponseWriter) {
+		csvw := csv.NewWriter(w)
+		for record := range records {
+			csvw.Write(record)
+		}
+	})
+}
+
+// Adds a CSV offer for the Renderer object.
+//
+// The records are generated with a generator function. If the function
+// returns an error, the streaming to the output stops.
+func (r *Renderer) CSVGenerator(recgen func(http.Flusher) ([]string, err)) *Renderer {
+	return r.AddOffer("text/csv", func(w http.ResponseWriter) {
+		csvw := csv.NewWriter(w)
+		for {
+			record, err := recgen(csvw)
+			if err != nil {
+				return
+			}
+			csvw.Write(record)
+		}
 	})
 }
 

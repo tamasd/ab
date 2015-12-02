@@ -15,7 +15,9 @@
 package ab
 
 import (
+	"encoding/csv"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"io"
 	"net/http"
@@ -27,11 +29,32 @@ var NoDecoderErr = errors.New("no decoder found for the request content type")
 // POST data decoders. The key is the content type, the value is a decoder that decodes the contents of the Reader into v.
 var Decoders = map[string]func(body io.Reader, v interface{}) error{
 	"application/json": JSONDecoder,
+	"application/xml":  XMLDecoder,
+	"text/xml":         XMLDecoder,
+	"text/csv":         CSVDecoder,
 }
 
 // Decodes the request body using the built-in JSON decoder into v.
 func JSONDecoder(body io.Reader, v interface{}) error {
 	return json.NewDecoder(body).Decode(v)
+}
+
+// Decodes the request body using the built-in XML decoder into v.
+func XMLDecoder(body io.Reader, v interface{}) error {
+	return xml.NewDecoder(body).Decode(v)
+}
+
+// Decodes the request body using the built-in CSV reader into v.
+//
+// v must be *[][]string
+func CSVDecoder(body io.Reader, v interface{}) error {
+	if m, ok := v.(*[][]string); ok {
+		var err error
+		*m, err = csv.NewReader(body).ReadAll()
+		return err
+	}
+
+	return errors.New("invalid data type for csv")
 }
 
 // Decodes a request body into v. After decoding, it closes the body.
