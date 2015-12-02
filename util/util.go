@@ -26,9 +26,11 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	mrand "math/rand"
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -176,4 +178,41 @@ var colorCodeRegex = regexp.MustCompile(`\[[0-9;]+m`)
 
 func StripTerminalColorCodes(s string) string {
 	return colorCodeRegex.ReplaceAllString(s, "")
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYI"
+const (
+	letterIdxBits = 6                    // 6 bits to represent a letter index
+	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
+	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
+)
+
+// Creates a function that generates random strings with a given length.
+//
+// The generated function is not thread-safe.
+// This function is not secure. Use this for dummy info or temp files, but
+// DO NOT use this to generate passwords or other cryptographically
+// sensitive data.
+func RandomStringGenerator() func(length int) string {
+	src := mrand.NewSource(time.Now().UnixNano())
+
+	return func(length int) string {
+		b := make([]byte, length)
+
+		for i, cache, remain := length-1, src.Int63(), letterIdxMax; i >= 0; {
+			if remain == 0 {
+				cache, remain = src.Int63(), letterIdxMax
+			}
+
+			if idx := int(cache & letterIdxMask); idx < len(letterBytes) {
+				b[i] = letterBytes[idx]
+				i--
+			}
+
+			cache >>= letterIdxBits
+			remain--
+		}
+
+		return string(b)
+	}
 }
