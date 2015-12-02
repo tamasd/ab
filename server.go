@@ -242,3 +242,24 @@ func HTTPSRedirectServer(httpsAddr, httpAddr string) error {
 
 	return srv.ListenAndServe()
 }
+
+func RedirectServer(addr, redirectAddr, certFile, keyFile string) error {
+	srv := &http.Server{
+		Addr: addr,
+	}
+
+	srv.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proto := "http"
+		if r.TLS != nil {
+			proto = "https"
+		}
+
+		http.Redirect(w, r, proto+"://"+redirectAddr+"/"+r.RequestURI, http.StatusMovedPermanently)
+	})
+
+	if certFile != "" && keyFile != "" {
+		return srv.ListenAndServeTLS(certFile, keyFile)
+	} else {
+		return srv.ListenAndServe()
+	}
+}
