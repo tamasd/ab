@@ -187,6 +187,7 @@ func (r *Renderer) CSVChannel(records <-chan []string) *Renderer {
 func (r *Renderer) CSVGenerator(recgen func(http.Flusher) ([]string, error)) *Renderer {
 	return r.AddOffer("text/csv", func(w http.ResponseWriter) {
 		csvw := csv.NewWriter(w)
+		defer csvw.Flush()
 		for {
 			record, err := recgen(csvw)
 			if err != nil {
