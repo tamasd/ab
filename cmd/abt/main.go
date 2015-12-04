@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/tools/entity"
+	"github.com/tamasd/ab/tools/gensecret"
 )
 
 func main() {
@@ -49,6 +50,7 @@ func main() {
 
 	abtCmd.AddCommand(
 		entitycmd.CreateEntityCmd(logger),
+		gensecretcmd.CreateGenSecretCMD(logger),
 	)
 
 	abtCmd.Execute()
