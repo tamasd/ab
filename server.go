@@ -17,6 +17,8 @@ package ab
 import (
 	"crypto/tls"
 	"database/sql"
+	"encoding/hex"
+	"errors"
 	"io/ioutil"
 	stdlog "log"
 	"net/http"
@@ -26,10 +28,11 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/nbio/hitch"
+	"github.com/spf13/viper"
 	"github.com/tamasd/ab/lib/log"
 )
 
-// The service is a concept than an actual distinction from regular endpoints. A service is an unit of functionality. It probably has database objects, that will be checked an installed when the service is added to the server.
+// A service is an unit of functionality. It probably has database objects, that will be checked an installed when the service is added to the server.
 type Service interface {
 	// Register the Service endpoints
 	Register(*hitch.Hitch) error
@@ -39,110 +42,158 @@ type Service interface {
 	SchemaSQL() string
 }
 
-// Contains configuration options for PetBunny.
-type ServerConfig struct {
-	AssetsDir string // Asssets directory path.
-	PublicDir string // Public directory path.
+// Sets up and starts a server.
+//
+// This function is a wrapper around PetBunny().
+func Hop(configure func(cfg *viper.Viper, s *Server) error, topMiddlewares ...func(http.Handler) http.Handler) {
+	logger := log.DefaultOSLogger()
+	cfg := viper.New()
+	cfg.SetConfigName("config")
+	cfg.AddConfigPath(".")
+	cfg.AutomaticEnv()
 
-	// Disables the automatic GZIP compression.
-	DisableGzip bool
+	if err := cfg.ReadInConfig(); err != nil {
+		logger.Fatalln(err)
+	}
 
-	// Prefix for the session cookie.
-	CookiePrefix string
-	// Secret for the session cookie's signature. This must not be empty.
-	CookieSecret SecretKey
+	s, err := PetBunny(cfg, logger, nil, topMiddlewares...)
 
-	// Connection string for the database.
-	PGConnectString string
-	// Number of maximum open connections.
-	DBMaxOpenConn int
-	// Number of maximum idle connections.
-	DBMaxIdleConn int
+	if err != nil {
+		logger.Fatalln(err)
+	}
 
-	// The server's error handler. Defaults to HandleError().
-	ErrorHandler ErrorHandler
+	if err := configure(cfg, s); err != nil {
+		logger.Fatalln(err)
+	}
 
-	Level log.LogLevel
+	cfg.SetDefault("host", "localhost")
+	cfg.SetDefault("port", "8080")
 
-	// Enables HSTS (RFC 6797). Strongly recommended for HTTPS websites.
-	HSTS *HSTSConfig
+	addr := cfg.GetString("host") + ":" + cfg.GetString("port")
+	certFile := cfg.GetString("certfile")
+	keyFile := cfg.GetString("keyfile")
 
-	Logger *log.Log
-
-	CookieURL *url.URL
+	if err := s.StartHTTPS(addr, certFile, keyFile); err != nil {
+		logger.Fatalln(err)
+	}
 }
 
 // Sets up a Server with recommended middlewares.
-func PetBunny(cfg ServerConfig, topMiddlewares ...func(http.Handler) http.Handler) *Server {
-	if cfg.CookieSecret == nil {
-		panic("secret key must not be empty")
+//
+// The parameters logger and eh can be nil, defaults will be log.DefaultOSLogger() and HandleErrors().
+//
+// topMiddlewares are middlewares that gets applied right after the logger middlewares, but before anything else.
+//
+// Viper has to be set up, and it has to contain a few values:
+//
+// - CookieSecret string: hex representation of the key bytes. Must be set.
+//
+// - PGConnectString string: connection string to Postgres. Must be set.
+//
+// - DBMaxIdleConn int: max idle connections. Defaults to 0 (no open connections are retained).
+//
+// - DBMaxOpenConn int: max open connections. Defaults to 0 (unlimited).
+//
+// - LogLevel int: log level for the logger. Use the numeric values of the log.LOG_* constants.
+//
+// - hsts (hsts.maxage float, hsts.includesubdomains bool, hsts.hostblacklist []string): configuration values for the HSTS middleware. See HSTSConfig structure
+//
+// - gzip bool: enabled the gzip middleware. Default is true.
+//
+// - CookiePrefix string: prefix for the session and the csrf cookies.
+//
+// - CookieURL string: domain and path configuration for the cookies.
+//
+// - assetsDir string: assets directory. The value - skips setting it up.
+//
+// - publicDir string: public directory. The value - skips setting it up.
+//
+// - root bool: sets / to serve assetsDir/index.html. Default is true.
+func PetBunny(cfg *viper.Viper, logger *log.Log, eh ErrorHandler, topMiddlewares ...func(http.Handler) http.Handler) (*Server, error) {
+	cookieSecret := cfg.GetString("CookieSecret")
+	if cookieSecret == "" {
+		return nil, errors.New("secret key must not be empty")
+	}
+	cookieSecretBytes, err := hex.DecodeString(cookieSecret)
+	if err != nil {
+		return nil, err
 	}
 
-	m, conn := DBMiddleware(cfg.PGConnectString, cfg.DBMaxIdleConn, cfg.DBMaxOpenConn)
+	m, conn := DBMiddleware(cfg.GetString("PGConnectString"), cfg.GetInt("DBMaxIdleConn"), cfg.GetInt("DBMaxOpenConn"))
 
 	s := NewServer(conn)
 
-	if cfg.Logger != nil {
-		s.Logger = cfg.Logger
+	if logger != nil {
+		s.Logger = logger
 	}
 
-	s.Logger.Level = cfg.Level
+	s.Logger.Level = log.LogLevel(cfg.GetInt("LogLevel"))
 
 	if len(topMiddlewares) > 0 {
 		s.Use(topMiddlewares...)
 	}
 
 	requestLoggerOut := ioutil.Discard
-	if cfg.Level > log.LOG_USER {
+	if s.Logger.Level > log.LOG_USER {
 		requestLoggerOut = os.Stdout
 	}
 
 	s.Use(RequestLoggerMiddleware(requestLoggerOut))
 
-	s.Use(DefaultLoggerMiddleware(cfg.Level))
+	s.Use(DefaultLoggerMiddleware(s.Logger.Level))
 
-	if cfg.HSTS != nil {
-		s.Use(HTSTMiddleware(*cfg.HSTS))
+	if cfg.IsSet("hsts") {
+		hsts := &HSTSConfig{}
+		cfg.UnmarshalKey("hsts", hsts)
+		s.Use(HSTSMiddleware(*hsts))
 	}
 
-	if !cfg.DisableGzip {
+	cfg.SetDefault("gzip", true)
+	if cfg.GetBool("gzip") {
 		s.Use(gziphandler.GzipHandler)
 	}
 
-	if cfg.ErrorHandler == nil {
-		cfg.ErrorHandler = ErrorHandlerFunc(HandleError)
+	if eh == nil {
+		eh = ErrorHandlerFunc(HandleError)
 	}
-	s.Use(ErrorHandlerMiddleware(cfg.ErrorHandler, cfg.Level > log.LOG_USER))
+	s.Use(ErrorHandlerMiddleware(eh, s.Logger.Level > log.LOG_USER))
 
 	s.Use(RendererMiddleware)
 
-	s.Use(SessionMiddleware(cfg.CookiePrefix, cfg.CookieSecret, cfg.CookieURL, time.Hour*24*365))
+	cookiePrefix := cfg.GetString("CookiePrefix")
+	var cookieURL *url.URL = nil
+	if cfg.IsSet("CookieURL") {
+		cookieURL, err = url.Parse(cfg.GetString("CookieURL"))
+	}
 
-	s.Use(CSRFCookieMiddleware(cfg.CookiePrefix, time.Hour*24*365, cfg.CookieURL))
+	s.Use(SessionMiddleware(cookiePrefix, SecretKey(cookieSecretBytes), cookieURL, time.Hour*24*365))
+
+	s.Use(CSRFCookieMiddleware(cookiePrefix, time.Hour*24*365, cookieURL))
 
 	s.Use(CSRFMiddleware)
 	s.Get("/api/token", http.HandlerFunc(CSRFTokenHandler))
 
 	s.Use(m)
 
-	if cfg.AssetsDir == "" {
-		cfg.AssetsDir = "assets"
+	cfg.SetDefault("assetsDir", "assets")
+	cfg.SetDefault("publicDir", "public")
+
+	assetsDir := cfg.GetString("assetsDir")
+	publicDir := cfg.GetString("publicDir")
+
+	if assetsDir != "-" {
+		s.AddLocalDir("/assets", assetsDir)
+	}
+	if publicDir != "-" {
+		s.AddLocalDir("/public", publicDir)
 	}
 
-	if cfg.PublicDir == "" {
-		cfg.PublicDir = "public"
+	cfg.SetDefault("root", true)
+	if cfg.GetBool("root") {
+		s.AddFile("/", assetsDir+"/index.html")
 	}
 
-	if cfg.AssetsDir != "-" {
-		s.AddLocalDir("/assets", cfg.AssetsDir)
-	}
-	if cfg.PublicDir != "-" {
-		s.AddLocalDir("/public", cfg.PublicDir)
-	}
-
-	s.AddFile("/", cfg.AssetsDir+"/index.html")
-
-	return s
+	return s, nil
 }
 
 // The main server struct.

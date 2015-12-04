@@ -107,6 +107,21 @@ func (l *Log) Trace() Logger {
 	return l.empty
 }
 
+func (l *Log) Fatal(v ...interface{}) {
+	l.User().Print(v...)
+	os.Exit(1)
+}
+
+func (l *Log) Fatalln(v ...interface{}) {
+	l.User().Println(v...)
+	os.Exit(1)
+}
+
+func (l *Log) Fatalf(format string, v ...interface{}) {
+	l.User().Printf(format, v...)
+	os.Exit(1)
+}
+
 var _ Logger = emptyLogger{}
 
 type emptyLogger struct{}

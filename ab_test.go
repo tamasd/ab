@@ -30,9 +30,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/naoina/toml"
 	"github.com/nbio/hitch"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/spf13/viper"
 	"github.com/tamasd/ab/util"
 )
 
@@ -40,15 +40,9 @@ const base = "http://localhost:9999"
 
 var hasDB = false
 
-var config testConfig
-
 type testDecode struct {
 	A int
 	B string
-}
-
-type testConfig struct {
-	PGConnectString string
 }
 
 var _ Service = &testService{}
@@ -124,12 +118,21 @@ func (s *testService) SchemaSQL() string {
 	return "CREATE TABLE test(a serial NOT NULL PRIMARY KEY, b text NOT NULL)"
 }
 
-func setupServer(c testConfig) {
-	s := PetBunny(ServerConfig{
-		CookieSecret:    SecretKey{161, 185, 93, 43, 42, 206, 51, 211, 53, 42, 189, 11, 238, 185, 174, 177, 101, 220, 127, 206, 220, 255, 69, 65, 85, 144, 126, 171, 98, 28, 109, 64, 177, 186, 89, 138, 116, 226, 219, 186, 164, 208, 49, 213, 180, 236, 184, 65, 211, 126, 182, 133, 98, 81, 148, 9, 205, 46, 242, 68, 205, 245, 221, 156},
-		PGConnectString: c.PGConnectString,
-		AssetsDir:       "testing/",
-	})
+func setupServer() *viper.Viper {
+	cfg := viper.New()
+	cfg.SetConfigName("test")
+	cfg.AddConfigPath(".")
+	cfg.AutomaticEnv()
+	cfg.ReadInConfig()
+	cfg.Set("CookieSecret", "a1b95d2b2ace33d3352abd0beeb9aeb165dc7fcedcff454155907eab621c6d40b1ba598a74e2dbbaa4d031d5b4ecb841d37eb68562519409cd2ef244cdf5dd9c")
+	cfg.Set("assetsDir", "testing/")
+
+	hasDB = cfg.IsSet("PGConnectString")
+
+	s, err := PetBunny(cfg, nil, nil)
+	if err != nil {
+		panic(err)
+	}
 	s.AddFile("/frontend", "testing/index.html")
 
 	s.Get("/csrf", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -184,23 +187,18 @@ func setupServer(c testConfig) {
 	s.RegisterService(svc)
 
 	go s.StartHTTP("localhost:9999")
+
+	return cfg
 }
 
 func TestMain(m *testing.M) {
-	if _, err := os.Stat("test.toml"); err == nil {
-		f, _ := os.Open("test.toml")
-		toml.NewDecoder(f).Decode(&config)
-		f.Close()
-	}
-
-	hasDB = config.PGConnectString != ""
-
-	setupServer(config)
+	cfg := setupServer()
 
 	res := m.Run()
 
-	if config.PGConnectString != "" {
-		conn, _ := sql.Open("postgres", config.PGConnectString)
+	connStr := cfg.GetString("PGConnectString")
+	if connStr != "" {
+		conn, _ := sql.Open("postgres", connStr)
 		conn.Exec(`
 			DROP SCHEMA public CASCADE;
 			CREATE SCHEMA public;

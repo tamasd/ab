@@ -26,8 +26,8 @@ import (
 	"testing"
 
 	"github.com/manveru/faker"
-	"github.com/naoina/toml"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/spf13/viper"
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/util"
@@ -36,12 +36,6 @@ import (
 //go:generate abt --generate-service-struct-name=testContentService --output=search_entity_test.go entity TestContent
 
 const base = "http://localhost:9996"
-
-var config testConfig
-
-type testConfig struct {
-	PGConnectString string
-}
 
 type TestContent struct {
 	UUID    string `dbtype:"uuid" dbdefault:"uuid_generate_v4()" json:"uuid"`
@@ -80,12 +74,19 @@ func (t *testContentSearchServiceDelegate) LoadEntities(uuids []string) []ab.Ent
 	return ents
 }
 
-func setupServer() (ab.DB, *SearchService) {
-	s := ab.PetBunny(ab.ServerConfig{
-		CookieSecret:    ab.SecretKey{161, 185, 93, 43, 42, 206, 51, 211, 53, 42, 189, 11, 238, 185, 174, 177, 101, 220, 127, 206, 220, 255, 69, 65, 85, 144, 126, 171, 98, 28, 109, 64, 177, 186, 89, 138, 116, 226, 219, 186, 164, 208, 49, 213, 180, 236, 184, 65, 211, 126, 182, 133, 98, 81, 148, 9, 205, 46, 242, 68, 205, 245, 221, 156},
-		PGConnectString: config.PGConnectString,
-		AssetsDir:       "./",
-	})
+func setupServer() (ab.DB, *SearchService, *viper.Viper) {
+	cfg := viper.New()
+	cfg.SetConfigName("test")
+	cfg.AddConfigPath(".")
+	cfg.AutomaticEnv()
+	cfg.ReadInConfig()
+	cfg.Set("CookieSecret", "a1b95d2b2ace33d3352abd0beeb9aeb165dc7fcedcff454155907eab621c6d40b1ba598a74e2dbbaa4d031d5b4ecb841d37eb68562519409cd2ef244cdf5dd9c")
+	cfg.Set("assetsDir", "./")
+
+	s, err := ab.PetBunny(cfg, nil, nil)
+	if err != nil {
+		panic(err)
+	}
 
 	s.RegisterService(&testContentService{})
 	searchDelegate := &testContentSearchServiceDelegate{
@@ -98,7 +99,7 @@ func setupServer() (ab.DB, *SearchService) {
 
 	go s.StartHTTP("localhost:9996")
 
-	return s.GetDBConnection(), searchService
+	return s.GetDBConnection(), searchService, cfg
 }
 
 var words []string
@@ -131,15 +132,9 @@ func mockData(db ab.DB, s *SearchService) {
 }
 
 func TestMain(m *testing.M) {
-	if _, err := os.Stat("test.toml"); err == nil {
-		f, _ := os.Open("test.toml")
-		toml.NewDecoder(f).Decode(&config)
-		f.Close()
-	}
-
 	util.SetKey([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2})
 
-	db, s := setupServer()
+	db, s, cfg := setupServer()
 
 	http.DefaultClient.Jar, _ = cookiejar.New(nil)
 
@@ -147,8 +142,9 @@ func TestMain(m *testing.M) {
 
 	res := m.Run()
 
-	if config.PGConnectString != "" {
-		conn, _ := sql.Open("postgres", config.PGConnectString)
+	connStr := cfg.GetString("PGConnectString")
+	if connStr != "" {
+		conn, _ := sql.Open("postgres", connStr)
 		conn.Exec(`
 			DROP SCHEMA public CASCADE;
 			CREATE SCHEMA public;
