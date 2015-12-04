@@ -23,6 +23,7 @@ import (
 	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/tools/entity"
 	"github.com/tamasd/ab/tools/gensecret"
+	"github.com/tamasd/ab/tools/watch"
 )
 
 func main() {
@@ -50,6 +51,7 @@ func main() {
 
 	abtCmd.AddCommand(
 		entitycmd.CreateEntityCmd(logger),
+		watchcmd.CreateWatchCmd(logger),
 		gensecretcmd.CreateGenSecretCMD(logger),
 	)
 
