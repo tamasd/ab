@@ -7,5 +7,10 @@ services:
     - postgresql
 before_script:
     - psql -c 'CREATE DATABASE abtest;' -U postgres
-env:
-    - PGCONNECTSTRING="dbname=abtest user=postgres sslmode=disable"
+    - psql -c 'CREATE DATABASE abauthtest;' -U postgres
+    - psql -c 'CREATE DATABASE absearchtest;' -U postgres
+    - psql -c 'CREATE DATABASE abentitytest;' -U postgres
+    - echo 'PGConnectString = "dbname=abtest user=postgres sslmode=disable"' > test.toml
+    - echo 'PGConnectString = "dbname=abauthtest user=postgres sslmode=disable"' > services/auth/test.toml
+    - echo 'PGConnectString = "dbname=absearchtest user=postgres sslmode=disable"' > services/search/test.toml
+    - echo 'PGConnectString = "dbname=abentitytest user=postgres sslmode=disable"' > testing/test.toml
