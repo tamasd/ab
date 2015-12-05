@@ -1,0 +1,9 @@
+language: go
+addons:
+    postgresql: "9.4"
+services:
+    - postgresql
+before_script:
+    - psql -c 'CREATE DATABASE abtest;' -U postgres
+env:
+    - PGCONNECTSTRING="dbname=abtest user=postgres sslmode=disable"

@@ -21,3 +21,5 @@ The `abt` command is a helper tool for the development. Subcommands:
 ## Contributing
 
 Feel free to open an issue / pull request for discussion, feature request or bug report.
+
+[![Build Status](https://travis-ci.org/tamasd/ab.svg)](https://travis-ci.org/tamasd/ab)
