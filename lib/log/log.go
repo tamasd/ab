@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Generic logger package
+//
+// There are 3 loglevels for every Log. The user level is what should
+// go into every log. These are log messages that normally appear in
+// the logs. The verbose level should be used during development or
+// when there is a problem with the service. The trace level is for
+// debugging.
 package log
 
 import (
@@ -43,14 +50,17 @@ var (
 	tracePrefix   = gocolorize.NewColor("black+b:white").Paint("TRACE") + " "
 )
 
+// Creates a user level logger with the default settings.
 func UserLogFactory(w io.Writer) Logger {
 	return log.New(w, userPrefix, log.LstdFlags)
 }
 
+// Creates a verbose level logger with the default settings.
 func VerboseLogFactory(w io.Writer) Logger {
 	return log.New(w, verbosePrefix, log.Lshortfile)
 }
 
+// Creates a trace level logger with the default settings.
 func TraceLogFactory(w io.Writer) Logger {
 	return log.New(w, tracePrefix, log.Ltime|log.Lmicroseconds|log.Lshortfile)
 }
@@ -72,6 +82,7 @@ func NewLogger(user, verbose, trace Logger) *Log {
 	}
 }
 
+// Creates a Log with the recommended settings that writes to w.
 func DefaultLogger(w io.Writer) *Log {
 	return NewLogger(
 		UserLogFactory(w),
@@ -80,6 +91,7 @@ func DefaultLogger(w io.Writer) *Log {
 	)
 }
 
+// Creates a Log with the recommended settings that writes to stdout.
 func DefaultOSLogger() *Log {
 	return DefaultLogger(os.Stdout)
 }

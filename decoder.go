@@ -73,7 +73,7 @@ func Decode(r *http.Request, v interface{}) error {
 
 // Same as Decode(), but it panics instead of returning an error.
 //
-// When using the framework with the recommended settings, this method is recommended instead of Decode(), because the panic will get caught by the error handler middleware.
+// When using the kit with the recommended settings, this method is recommended instead of Decode(), because the panic will get caught by the error handler middleware.
 func MustDecode(r *http.Request, v interface{}) {
 	err := Decode(r, v)
 	if err == NoDecoderErr {

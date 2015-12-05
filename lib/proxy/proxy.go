@@ -28,6 +28,9 @@ import (
 	"github.com/tamasd/ab/lib/log"
 )
 
+// HTTP(S) reverse proxy that locks and unlocks the Locker.
+//
+// It is recommended to use sync.RWLocker.RLocker() as a Locker.
 type LockProxy struct {
 	sync.Locker
 	Address            string

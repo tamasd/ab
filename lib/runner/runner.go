@@ -26,6 +26,11 @@ import (
 	"github.com/tamasd/ab/util"
 )
 
+// Runner is a server that builds and runs a Go application.
+//
+// When a signal is received through Rerun(), Runner kills the child process
+// if it is still running. Runner does not work properly if the build
+// application has child processes.
 type Runner struct {
 	Package        string
 	Env            []string

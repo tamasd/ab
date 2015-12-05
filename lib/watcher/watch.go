@@ -24,6 +24,9 @@ import (
 	"gopkg.in/fsnotify.v1"
 )
 
+// Watcher is a server that recursively watches a directory for changes.
+//
+// It has a set of ignore patterns to ignore certain files / directories.
 type Watcher struct {
 	Ignores []Ignorer
 	Logger  *log.Log
