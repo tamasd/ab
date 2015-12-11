@@ -272,7 +272,7 @@ var ErrorPage = template.Must(template.New("ErrorPage").Parse(`<!DOCTYPE HTML>
 		<h1>HTTP Error {{.Code}}</h1>
 		<p>{{.Message}}</p>
 		<hr/>
-		<p>{{.Logs}}</p>
+		<pre>{{.Logs}}</pre>
 	</body>
 </html>
 `))
