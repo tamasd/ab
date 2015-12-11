@@ -83,8 +83,7 @@ func (g *GoogleAuthProviderDelegate) PrepareUser(c *http.Client, token *oauth2.T
 		return nil, "", err
 	}
 
-	return entity, person.Url, nil
-
+	return entity, person.Id, nil
 }
 
 type ErrorNoEmail struct {
