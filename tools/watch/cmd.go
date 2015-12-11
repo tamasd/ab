@@ -179,7 +179,7 @@ func CreateWatchCmd(logger *log.Log) *cobra.Command {
 		cfg.AddConfigPath(".")
 		cfg.AutomaticEnv()
 		if err := cfg.ReadInConfig(); err != nil {
-			logger.Fatalln(err)
+			logger.Verbose().Println(err)
 		}
 
 		cfg.SetDefault("Package", ".")
