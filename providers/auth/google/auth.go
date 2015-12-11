@@ -16,6 +16,7 @@ package google
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/services/auth"
@@ -29,7 +30,7 @@ func NewGoogleAuthProvider(creds auth.OAuthCredentials, delegate GoogleUserDeleg
 }
 
 type GoogleUserDelegate interface {
-	Convert(*plus.Person) ab.Entity
+	Convert(*plus.Person) (ab.Entity, error)
 }
 
 var _ auth.OAuth2ProviderDelegate = &GoogleAuthProviderDelegate{}
@@ -77,7 +78,33 @@ func (g *GoogleAuthProviderDelegate) PrepareUser(c *http.Client, token *oauth2.T
 		return nil, "", err
 	}
 
-	entity := g.delegate.Convert(person)
+	entity, err := g.delegate.Convert(person)
+	if err != nil {
+		return nil, "", err
+	}
+
 	return entity, person.Url, nil
 
+}
+
+type ErrorNoEmail struct {
+	Emails []*plus.PersonEmails
+}
+
+func (e ErrorNoEmail) Error() string {
+	mails := []string{}
+	for _, m := range e.Emails {
+		if m != nil {
+			mails = append(mails, m.Value+" ("+m.Type+")")
+		} else {
+			mails = append(mails, "<nil>")
+		}
+	}
+
+	mailList := "<empty list>"
+	if len(mails) > 0 {
+		mailList = strings.Join(mails, ", ")
+	}
+
+	return "no valid email found (" + mailList + ")"
 }

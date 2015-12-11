@@ -66,7 +66,7 @@ func (p *OAuth2Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 
 		oauthuser, authid, err := p.delegate.PrepareUser(client, token)
 		if err != nil {
-			ab.Fail(r, http.StatusInternalServerError, err)
+			ab.Fail(r, http.StatusInternalServerError, ab.WrapError(err, "Failed to retrieve the required data from the provider. Check your privacy settings."))
 		}
 
 		jsontokens, err := json.Marshal(token)
