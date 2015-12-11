@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/nbio/hitch"
@@ -46,13 +47,14 @@ func (p *OAuth2Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 		token := r.URL.Query().Get("token")
 
 		url := c.AuthCodeURL(token, oauth2.AccessTypeOffline)
+		ab.LogTrace(r).Println("redirecting to OAuth2 provider", name)
 		http.Redirect(w, r, url, http.StatusSeeOther)
 	}), ab.CSRFGetMiddleware("token"))
 
 	h.Get("/api/auth/"+name+"/callback", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
 		if code == "" {
-			ab.Fail(r, http.StatusBadRequest, nil)
+			ab.Fail(r, http.StatusBadRequest, errors.New("empty code from "+name))
 		}
 
 		token, err := c.Exchange(oauth2.NoContext, code)
@@ -77,14 +79,17 @@ func (p *OAuth2Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 		if user.IsLoggedIn(r) {
 			// User is already logged in. This scenario is likely to happen
 			// when the user intends to add a new service.
+			ab.LogTrace(r).Println("user is already logged in, adding new service")
 			id := user.CurrentUser(r)
 			ab.MaybeFail(r, http.StatusInternalServerError, AddAuthToUser(db, id, authid, string(jsontokens), name))
 		} else {
 			// User is not logged in.
 			// First let's try to authenticate, assuming that the user exists.
+			ab.LogTrace(r).Println("user is not logged in")
 			id, _ := AuthenticateUser(db, name, authid)
 			// The user is not found. Let's register the user.
 			if id == "" {
+				ab.LogTrace(r).Println("user not found, creating new user")
 				if err := oauthuser.Insert(db); err != nil {
 					ab.Fail(r, http.StatusInternalServerError, err)
 				}
@@ -94,6 +99,7 @@ func (p *OAuth2Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 				}
 			}
 
+			ab.LogTrace(r).Println("logging in user")
 			user.LoginUser(r, id)
 		}
 

@@ -17,6 +17,7 @@ package ab
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/url"
 	"time"
@@ -34,7 +35,7 @@ func CSRFMiddleware(next http.Handler) http.Handler {
 			userToken := r.Header.Get("X-CSRF-Token")
 
 			if userToken == "" || userToken != token {
-				Fail(r, http.StatusForbidden, nil)
+				Fail(r, http.StatusForbidden, errors.New("CSRF token validation failed"))
 			}
 		}
 
@@ -55,7 +56,7 @@ func CSRFGetMiddleware(urlParam string) func(http.Handler) http.Handler {
 			userToken := r.URL.Query().Get(urlParam)
 
 			if userToken == "" || userToken != token {
-				Fail(r, http.StatusForbidden, nil)
+				Fail(r, http.StatusForbidden, errors.New("CSRF token validation failed"))
 			}
 
 			next.ServeHTTP(w, r)

@@ -53,7 +53,7 @@ func Hop(configure func(cfg *viper.Viper, s *Server) error, topMiddlewares ...fu
 	cfg.AutomaticEnv()
 
 	if err := cfg.ReadInConfig(); err != nil {
-		logger.Fatalln(err)
+		logger.Verbose().Println(err)
 	}
 
 	s, err := PetBunny(cfg, logger, nil, topMiddlewares...)
