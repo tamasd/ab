@@ -100,6 +100,7 @@ func (s *SearchService) cacheSave(keywords []string, results []SearchResult) {
 
 func (s *SearchService) Search(search string, owners []string) ([]SearchResult, error) {
 	search = strings.TrimSpace(search)
+	search = strings.ToLower(search)
 
 	if len(search) == 0 {
 		return []SearchResult{}, nil
