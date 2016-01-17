@@ -35,6 +35,7 @@ func CSRFMiddleware(next http.Handler) http.Handler {
 			userToken := r.Header.Get("X-CSRF-Token")
 
 			if userToken == "" || userToken != token {
+				LogTrace(r).Printf("CSRF fail: %s vs %s\n", userToken, token)
 				Fail(r, http.StatusForbidden, errors.New("CSRF token validation failed"))
 			}
 		}
@@ -56,6 +57,7 @@ func CSRFGetMiddleware(urlParam string) func(http.Handler) http.Handler {
 			userToken := r.URL.Query().Get(urlParam)
 
 			if userToken == "" || userToken != token {
+				LogTrace(r).Printf("CSRF fail: %s vs %s\n", userToken, token)
 				Fail(r, http.StatusForbidden, errors.New("CSRF token validation failed"))
 			}
 
