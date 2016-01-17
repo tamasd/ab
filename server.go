@@ -30,6 +30,7 @@ import (
 	"github.com/nbio/hitch"
 	"github.com/spf13/viper"
 	"github.com/tamasd/ab/lib/log"
+	"github.com/tamasd/ab/util"
 )
 
 // A service is an unit of functionality. It probably has database objects, that will be checked an installed when the service is added to the server.
@@ -45,6 +46,10 @@ type Service interface {
 // Sets up and starts a server.
 //
 // This function is a wrapper around PetBunny().
+//
+// Extra viper values:
+//
+// - secret: sets util.SetKey(). Must be hex.
 func Hop(configure func(cfg *viper.Viper, s *Server) error, topMiddlewares ...func(http.Handler) http.Handler) {
 	logger := log.DefaultOSLogger()
 	cfg := viper.New()
@@ -54,6 +59,14 @@ func Hop(configure func(cfg *viper.Viper, s *Server) error, topMiddlewares ...fu
 
 	if err := cfg.ReadInConfig(); err != nil {
 		logger.Verbose().Println(err)
+	}
+
+	secret, err := hex.DecodeString(cfg.GetString("secret"))
+	if err != nil {
+		logger.Fatalln(err)
+	}
+	if err := util.SetKey(secret); err != nil {
+		logger.Fatalln(err)
 	}
 
 	s, err := PetBunny(cfg, logger, nil, topMiddlewares...)
