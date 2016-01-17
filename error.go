@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"runtime"
 
 	"github.com/nbio/httpcontext"
 	"github.com/tamasd/ab/util"
@@ -85,6 +86,7 @@ var _ VerboseError = Panic{}
 type Panic struct {
 	Code          int
 	Err           error
+	StackTrace    string
 	displayErrors bool
 }
 
@@ -129,13 +131,14 @@ func (p Panic) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	logs := ""
 	if p.displayErrors {
-		logs = util.StripTerminalColorCodes(RequestLogs(r))
+		logs = p.StackTrace + "\n\n" + util.StripTerminalColorCodes(RequestLogs(r))
 	}
 
 	pageData.Logs = logs
 
 	if p.Err != nil {
 		LogVerbose(r).Println(p.Err)
+		LogTrace(r).Println(p.StackTrace)
 	}
 
 	jsonMap := map[string]string{"message": pageData.Message}
@@ -185,6 +188,9 @@ func ErrorHandlerMiddleware(eh ErrorHandler, displayErrors bool) func(http.Handl
 					return
 				}
 
+				stackTrace := make([]byte, 1024)
+				runtime.Stack(stackTrace, false)
+
 				p, ok := rec.(Panic)
 				if !ok {
 					err, ok := rec.(error)
@@ -198,6 +204,7 @@ func ErrorHandlerMiddleware(eh ErrorHandler, displayErrors bool) func(http.Handl
 				}
 
 				p.displayErrors = displayErrors
+				p.StackTrace = string(stackTrace)
 
 				p.ServeHTTP(w, r)
 			}()
