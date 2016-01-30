@@ -41,8 +41,6 @@ var (
 type ErrorHandler interface {
 	// Error handler method. This must panic with Panic, and the ErrorHandlerMiddleware will recover it.
 	HandleError(int, error)
-	// May panic with Panic depending on error. It should panic if error != nil.
-	MaybeError(int, error)
 }
 
 type VerboseError interface {
@@ -227,9 +225,19 @@ func Fail(r *http.Request, code int, err error) {
 	Error(r).HandleError(code, err)
 }
 
-// Calls MaybeError on the Error object inside the request context.
-func MaybeFail(r *http.Request, code int, err error) {
-	Error(r).MaybeError(code, err)
+// Calls Fail() if err is not nil and not any of excludedErrors.
+func MaybeFail(r *http.Request, code int, err error, excludedErrors ...error) {
+	if err == nil {
+		return
+	}
+
+	for _, e := range excludedErrors {
+		if e == err {
+			return
+		}
+	}
+
+	Fail(r, code, err)
 }
 
 // Generic error handler function type.
@@ -237,12 +245,6 @@ type ErrorHandlerFunc func(int, error)
 
 func (ehf ErrorHandlerFunc) HandleError(code int, err error) {
 	ehf(code, err)
-}
-
-func (ehf ErrorHandlerFunc) MaybeError(code int, err error) {
-	if err != nil {
-		ehf.HandleError(code, err)
-	}
 }
 
 // Standard error handler function.
