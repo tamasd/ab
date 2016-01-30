@@ -20,6 +20,7 @@ import (
 	"html/template"
 	"net/http"
 	"runtime"
+	"strings"
 
 	"github.com/nbio/httpcontext"
 	"github.com/tamasd/ab/util"
@@ -204,7 +205,7 @@ func ErrorHandlerMiddleware(eh ErrorHandler, displayErrors bool) func(http.Handl
 				}
 
 				p.displayErrors = displayErrors
-				p.StackTrace = string(stackTrace)
+				p.StackTrace = strings.TrimRight(string(stackTrace), "\x00")
 
 				p.ServeHTTP(w, r)
 			}()
