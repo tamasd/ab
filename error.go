@@ -188,7 +188,7 @@ func ErrorHandlerMiddleware(eh ErrorHandler, displayErrors bool) func(http.Handl
 					return
 				}
 
-				stackTrace := make([]byte, 1024)
+				stackTrace := make([]byte, 8192)
 				runtime.Stack(stackTrace, false)
 
 				p, ok := rec.(Panic)
