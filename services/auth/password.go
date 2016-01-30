@@ -15,6 +15,7 @@
 package auth
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/base64"
@@ -22,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image/png"
 	"io"
 	"net/http"
 	"net/smtp"
@@ -29,8 +31,7 @@ import (
 	"strings"
 	"time"
 
-	"code.google.com/p/rsc/qr"
-
+	"github.com/boombuler/barcode/qr"
 	"github.com/dgryski/dgoogauth"
 	"github.com/lib/pq"
 	"github.com/nbio/hitch"
@@ -222,16 +223,20 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		issuer := p.delegate.Get2FAIssuer()
 		auth_string := "otpauth://totp/" + user.CurrentUser(r) + "?secret=" + secret + "&issuer=" + issuer
 
-		code, err := qr.Encode(auth_string, qr.L)
+		code, err := qr.Encode(auth_string, qr.H, qr.Unicode)
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 
 		sess["2fa_secret"] = util.EncryptString(secret)
 
+		buf := bytes.NewBuffer(nil)
+		ab.MaybeFail(r, http.StatusInternalServerError, png.Encode(buf, code))
+		img := buf.Bytes()
+
 		ab.Render(r).AddOffer("image/png", func(w http.ResponseWriter) {
-			w.Write(code.PNG())
+			w.Write(img)
 		}).JSON(map[string]string{
 			"secret": secret,
-			"image":  base64.StdEncoding.EncodeToString(code.PNG()),
+			"image":  base64.StdEncoding.EncodeToString(img),
 		}).SetCode(http.StatusAccepted)
 	}), ab.CSRFGetMiddleware("token"), LoggedInMiddleware(user))
 
