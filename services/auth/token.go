@@ -24,7 +24,7 @@ import (
 )
 
 // Generates and saves a new token.
-func CreateToken(db ab.DB, uuid, category string, expires *time.Time) (string, error) {
+func CreateToken(db ab.DB, uuid, category string, expires *time.Time, autoclean bool) (string, error) {
 	buf := make([]byte, 64)
 	_, err := io.ReadFull(rand.Reader, buf)
 	if err != nil {
@@ -33,10 +33,17 @@ func CreateToken(db ab.DB, uuid, category string, expires *time.Time) (string, e
 
 	token := hex.EncodeToString(buf)
 
-	return token, setToken(db, uuid, category, token, expires)
+	return token, setToken(db, uuid, category, token, expires, autoclean)
 }
 
-func setToken(db ab.DB, uuid, category, token string, expires *time.Time) error {
+func setToken(db ab.DB, uuid, category, token string, expires *time.Time, autoclean bool) error {
+	if autoclean {
+		_, err := db.Exec("DELETE FROM token WHERE uuid = $1 AND category = $2", uuid, category)
+		if err != nil {
+			return err
+		}
+	}
+
 	_, err := db.Exec("INSERT INTO token(uuid, category, token, expires) VALUES($1, $2, $3, $4)",
 		uuid,
 		category,

@@ -17,6 +17,7 @@ package auth
 import (
 	"bytes"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
@@ -27,10 +28,13 @@ import (
 	"io"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
+	"github.com/boombuler/barcode"
 	"github.com/boombuler/barcode/qr"
 	"github.com/dgryski/dgoogauth"
 	"github.com/lib/pq"
@@ -58,6 +62,7 @@ type PasswordAuthProviderDelegate interface {
 	GetAuthID(ab.Entity) string
 	GetEmail(ab.Entity) string
 	Get2FAIssuer() string
+	LoadUser(string) (ab.Entity, error)
 	LoadUserByMail(string) (ab.Entity, error)
 }
 
@@ -143,7 +148,10 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 
 		authData.EmailVerificationToken = ""
 
-		err = updateAuthData(db, uuid, p.GetName(), authData)
+		u, err := p.delegate.LoadUser(uuid)
+		ab.MaybeFail(r, http.StatusInternalServerError, err)
+
+		err = updateAuthData(db, uuid, p.GetName(), authData, p.delegate.GetAuthID(u))
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 
 		user.LoginUser(r, uuid)
@@ -159,7 +167,11 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		var uuid string
 		var secret string
 		if err := db.QueryRow("SELECT uuid, secret FROM auth a WHERE a.provider = $1 AND a.authid = $2", p.GetName(), ld.Identifier).Scan(&uuid, &secret); err != nil {
-			ab.Fail(r, http.StatusInternalServerError, ab.ConvertDBError(err, p.delegate.GetDBErrorConverter()))
+			if err == sql.ErrNoRows {
+				ab.Fail(r, http.StatusNotFound, errors.New("invalid username or password"))
+			} else {
+				ab.Fail(r, http.StatusInternalServerError, ab.ConvertDBError(err, p.delegate.GetDBErrorConverter()))
+			}
 		}
 
 		authData := passwordAuthData{}
@@ -184,6 +196,20 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 			ab.Render(r).SetCode(http.StatusAccepted)
 		}
 	}), NotLoggedInMiddleware(user))
+
+	h.Get("/api/auth/"+name+"/has2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		db := ab.GetDB(r)
+		uid := user.CurrentUser(r)
+
+		authData, err := getAuthData(db, uid, p.GetName())
+		if err != nil && err != sql.ErrNoRows {
+			ab.Fail(r, http.StatusInternalServerError, err)
+		}
+
+		ab.Render(r).JSON(map[string]bool{
+			"has2fa": authData.TwoFAToken != "",
+		})
+	}), LoggedInMiddleware(user))
 
 	h.Post("/api/auth/"+name+"/2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
@@ -214,17 +240,32 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 
 	h.Get("/api/auth/"+name+"/add2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
-		sec := make([]byte, 6)
-		_, err := io.ReadFull(rand.Reader, sec)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		var secret string
 
-		secret := base32.StdEncoding.EncodeToString(sec)
+		if sessSecret, found := sess["2fa_secret"]; found {
+			secret = util.DecryptString(sessSecret)
+		} else {
+			sec := make([]byte, 20)
+			_, err := io.ReadFull(rand.Reader, sec)
+			ab.MaybeFail(r, http.StatusInternalServerError, err)
+
+			secret = base32.StdEncoding.EncodeToString(sec)
+		}
 
 		issuer := p.delegate.Get2FAIssuer()
-		auth_string := "otpauth://totp/" + user.CurrentUser(r) + "?secret=" + secret + "&issuer=" + issuer
+		auth_string := "otpauth://totp/" + user.CurrentUser(r) +
+			"?secret=" + url.QueryEscape(strings.ToLower(secret)) +
+			"&issuer=" + url.QueryEscape(issuer)
 
 		code, err := qr.Encode(auth_string, qr.H, qr.Unicode)
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
+
+		if size, err := strconv.Atoi(r.URL.Query().Get("size")); err == nil {
+			if size >= 100 && size <= 500 {
+				code, err = barcode.Scale(code, size, size)
+				ab.MaybeFail(r, http.StatusInternalServerError, err)
+			}
+		}
 
 		sess["2fa_secret"] = util.EncryptString(secret)
 
@@ -259,10 +300,14 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		if valid {
 			currentUser := user.CurrentUser(r)
 			db := ab.GetTransaction(r)
+
+			u, err := p.delegate.LoadUser(currentUser)
+			ab.MaybeFail(r, http.StatusInternalServerError, err)
+
 			authData, err := getAuthData(db, currentUser, p.GetName())
 			ab.MaybeFail(r, http.StatusBadRequest, err)
 			authData.TwoFAToken = secret
-			err = updateAuthData(db, currentUser, p.GetName(), authData)
+			err = updateAuthData(db, currentUser, p.GetName(), authData, p.delegate.GetAuthID(u))
 			ab.MaybeFail(r, http.StatusInternalServerError, err)
 		} else {
 			ab.Fail(r, http.StatusForbidden, nil)
@@ -286,7 +331,11 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 
 		authData.TwoFAToken = ""
 
-		err = updateAuthData(db, uid, p.GetName(), authData)
+		currentUser := user.CurrentUser(r)
+		u, err := p.delegate.LoadUser(currentUser)
+		ab.MaybeFail(r, http.StatusInternalServerError, err)
+
+		err = updateAuthData(db, uid, p.GetName(), authData, p.delegate.GetAuthID(u))
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 	}), LoggedInMiddleware(user))
 
@@ -302,27 +351,40 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 
 		ab.MaybeFail(r, http.StatusBadRequest, pwchg.ValidatePassword())
 
+		hasPassword := true
 		authData, err := getAuthData(db, uid, p.GetName())
-		ab.MaybeFail(r, http.StatusBadRequest, err)
-
-		if otlcode == "" {
-			ok, err := verifyPassword(pwchg.GetOldPassword(), authData.PasswordHash)
-			ab.MaybeFail(r, http.StatusInternalServerError, err)
-			if !ok {
-				ab.Fail(r, http.StatusBadRequest, nil)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				hasPassword = false
+			} else {
+				ab.Fail(r, http.StatusBadRequest, err)
 			}
-		} else {
-			ok, err := ConsumeToken(db, uid, "otlcode", otlcode)
-			ab.MaybeFail(r, http.StatusInternalServerError, err)
-			if !ok {
-				ab.Fail(r, http.StatusBadRequest, nil)
+		}
+
+		if hasPassword {
+			if otlcode == "" {
+				ok, err := verifyPassword(pwchg.GetOldPassword(), authData.PasswordHash)
+				ab.MaybeFail(r, http.StatusInternalServerError, err)
+				if !ok {
+					ab.Fail(r, http.StatusBadRequest, nil)
+				}
+			} else {
+				ok, err := ConsumeToken(db, uid, "otlcode", otlcode)
+				ab.MaybeFail(r, http.StatusInternalServerError, err)
+				if !ok {
+					ab.Fail(r, http.StatusBadRequest, nil)
+				}
 			}
 		}
 
 		authData.PasswordHash, err = defaultHashPassword(pwchg.GetPassword())
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 
-		err = updateAuthData(db, uid, p.GetName(), authData)
+		currentUser := user.CurrentUser(r)
+		u, err := p.delegate.LoadUser(currentUser)
+		ab.MaybeFail(r, http.StatusInternalServerError, err)
+
+		err = updateAuthData(db, uid, p.GetName(), authData, p.delegate.GetAuthID(u))
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 	}), LoggedInMiddleware(user))
 
@@ -332,6 +394,9 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 
 		user, err := p.delegate.LoadUserByMail(d.Email)
 		ab.MaybeFail(r, http.StatusBadRequest, err)
+		if user == nil {
+			ab.Fail(r, http.StatusNotFound, errors.New("user not found"))
+		}
 		if user.GetID() == "" {
 			ab.Fail(r, http.StatusNotFound, errors.New("user not found"))
 		}
@@ -339,7 +404,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		db := ab.GetDB(r)
 
 		exp := time.Now().Add(24 * time.Hour)
-		t, err := CreateToken(db, user.GetID(), "lostpassword", &exp)
+		t, err := CreateToken(db, user.GetID(), "lostpassword", &exp, true)
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 
 		err = p.emailDelegate.SendLostPasswordLink(d.Email, "/api/auth/"+name+"/onetimelogin?code="+t+"&uuid="+user.GetID())
@@ -362,7 +427,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		}
 
 		exp := time.Now().Add(time.Hour)
-		otlcode, err := CreateToken(db, uuid, "otlcode", &exp)
+		otlcode, err := CreateToken(db, uuid, "otlcode", &exp, false)
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 
 		sess := ab.GetSession(r)
@@ -396,14 +461,14 @@ func getAuthData(db ab.DB, uuid, provider string) (d passwordAuthData, err error
 	return
 }
 
-func updateAuthData(db ab.DB, uuid, provider string, d passwordAuthData) error {
+func updateAuthData(db ab.DB, uuid, provider string, d passwordAuthData, authid string) error {
 	jsonD, err := json.Marshal(d)
 	if err != nil {
 		return err
 	}
 	secret := util.EncryptString(string(jsonD))
 
-	_, err = db.Exec("UPDATE auth SET secret = $1 WHERE uuid = $2 AND provider = $3", secret, uuid, provider)
+	_, err = db.Exec("INSERT INTO auth(uuid, authid, secret, provider) VALUES($2, $4, $1, $3) ON CONFLICT ON CONSTRAINT auth_pkey DO UPDATE SET secret = $1 WHERE auth.uuid = $2 AND auth.provider = $3", secret, uuid, provider, authid)
 
 	return err
 }
@@ -529,7 +594,7 @@ func (pf PasswordFields) GetPassword() string {
 
 type PasswordChangeFields struct {
 	PasswordFields
-	OldPassword string
+	OldPassword string `json:"old_password"`
 }
 
 type PasswordLoginData struct {
@@ -572,23 +637,36 @@ type PasswordAuthSMTPEmailSenderDelegate struct {
 	SMTPAddr  string
 	SiteEmail string
 
-	RegistrationEmailTemplate string
-	LostPasswordEmailTemplate string
+	RegistrationEmailTemplate *template.Template
+	LostPasswordEmailTemplate *template.Template
 }
 
-func NewPasswordAuthSMTPEmailSenderDelegate(smtpAuth smtp.Auth, baseURL string) *PasswordAuthSMTPEmailSenderDelegate {
+func NewPasswordAuthSMTPEmailSenderDelegate(smtpAddr string, smtpAuth smtp.Auth, baseURL string) *PasswordAuthSMTPEmailSenderDelegate {
 	return &PasswordAuthSMTPEmailSenderDelegate{
 		smtpAuth: smtpAuth,
 		baseURL:  baseURL,
+		SMTPAddr: smtpAddr,
 	}
 }
 
+func (d *PasswordAuthSMTPEmailSenderDelegate) send(address, url string, msg *template.Template) error {
+	buf := bytes.NewBuffer(nil)
+	msg.Execute(buf, MailTemplateData{
+		Url:  d.baseURL + url,
+		Mail: address,
+	})
+	return smtp.SendMail(d.SMTPAddr, d.smtpAuth, d.SiteEmail, []string{address}, buf.Bytes())
+}
+
 func (d *PasswordAuthSMTPEmailSenderDelegate) SendRegistrationEmail(address, url string) error {
-	msg := strings.Replace(d.RegistrationEmailTemplate, "URL", d.baseURL+url, -1)
-	return smtp.SendMail(d.SMTPAddr, d.smtpAuth, d.SiteEmail, []string{address}, []byte(msg))
+	return d.send(address, url, d.RegistrationEmailTemplate)
 }
 
 func (d *PasswordAuthSMTPEmailSenderDelegate) SendLostPasswordLink(address, url string) error {
-	msg := strings.Replace(d.LostPasswordEmailTemplate, "URL", d.baseURL+url, -1)
-	return smtp.SendMail(d.SMTPAddr, d.smtpAuth, d.SiteEmail, []string{address}, []byte(msg))
+	return d.send(address, url, d.LostPasswordEmailTemplate)
+}
+
+type MailTemplateData struct {
+	Url  string
+	Mail string
 }

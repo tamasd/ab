@@ -111,6 +111,37 @@ func (s *Service) Register(h *hitch.Hitch) error {
 		ab.Render(r).JSON(providers)
 	}))
 
+	h.Get("/api/providers/auth/:uuid", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uuid := hitch.Params(r).ByName("uuid")
+		db := ab.GetDB(r)
+		sess := ab.GetSession(r)
+		uid := sess["uid"] // TODO don't hardcode this
+		if uid == "" {
+			ab.Fail(r, http.StatusForbidden, nil)
+		}
+
+		if uid != uuid {
+			// TODO check for admin access when the access control will be ready
+			ab.Fail(r, http.StatusForbidden, nil)
+		}
+
+		provs := []string{}
+		rows, err := db.Query("SELECT DISTINCT provider FROM auth WHERE uuid = $1", uuid)
+		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		defer rows.Close()
+
+		for rows.Next() {
+			var provider string
+			if err = rows.Scan(&provider); err != nil {
+				ab.Fail(r, http.StatusInternalServerError, err)
+			}
+
+			provs = append(provs, provider)
+		}
+
+		ab.Render(r).JSON(provs)
+	}))
+
 	h.Get("/api/auth/logout", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
 		for k := range sess {

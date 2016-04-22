@@ -259,13 +259,33 @@ func (pd *pwDelegate) GetAuthID(e ab.Entity) string {
 }
 
 func (pd *pwDelegate) GetEmail(e ab.Entity) string {
-	return e.(*regData).Mail
+	if rd, ok := e.(*regData); ok {
+		return rd.Mail
+	}
+
+	if u, ok := e.(*TestUser); ok {
+		return u.Mail
+	}
+
+	return ""
 }
 
 func (pd *pwDelegate) GetDBErrorConverter() func(*pq.Error) ab.VerboseError {
 	return func(err *pq.Error) ab.VerboseError {
 		return ab.NewVerboseError(err.Error(), "")
 	}
+}
+
+func (pd *pwDelegate) LoadUser(uuid string) (ab.Entity, error) {
+	user, err := LoadTestUser(pd.db, uuid)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, err
+	}
+
+	return user, err
 }
 
 func (pd *pwDelegate) LoadUserByMail(mail string) (ab.Entity, error) {
