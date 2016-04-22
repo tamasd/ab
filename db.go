@@ -16,6 +16,7 @@ package ab
 
 import (
 	"database/sql"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -148,4 +149,44 @@ func ConvertDBError(err error, conv func(*pq.Error) VerboseError) error {
 	}
 
 	return err
+}
+
+func DBErrorToVerboseString(err *pq.Error) string {
+	return fmt.Sprintf(`
+	Severity         %s
+	Code             %s
+	Message          %s
+	Detail           %s
+	Hint             %s
+	Position         %s
+	InternalPosition %s
+	InternalQuery    %s
+	Where            %s
+	Schema           %s
+	Table            %s
+	Column           %s
+	DataTypeName     %s
+	Constraint       %s
+	File             %s
+	Line             %s
+	Routine          %s
+`,
+		err.Severity,
+		err.Code,
+		err.Message,
+		err.Detail,
+		err.Hint,
+		err.Position,
+		err.InternalPosition,
+		err.InternalQuery,
+		err.Where,
+		err.Schema,
+		err.Table,
+		err.Column,
+		err.DataTypeName,
+		err.Constraint,
+		err.File,
+		err.Line,
+		err.Routine,
+	)
 }
