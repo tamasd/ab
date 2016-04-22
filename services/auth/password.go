@@ -155,6 +155,8 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 
 		user.LoginUser(r, uuid)
+
+		http.Redirect(w, r, ab.RedirectDestination(r), http.StatusTemporaryRedirect)
 	}), ab.CSRFGetMiddleware("token"), NotLoggedInMiddleware(user))
 
 	h.Post("/api/auth/"+name+"/login", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
