@@ -638,6 +638,7 @@ type PasswordAuthSMTPEmailSenderDelegate struct {
 	smtpAuth  smtp.Auth
 	SMTPAddr  string
 	SiteEmail string
+	From      string
 
 	RegistrationEmailTemplate *template.Template
 	LostPasswordEmailTemplate *template.Template
@@ -656,6 +657,7 @@ func (d *PasswordAuthSMTPEmailSenderDelegate) send(address, url string, msg *tem
 	msg.Execute(buf, MailTemplateData{
 		Url:  d.baseURL + url,
 		Mail: address,
+		From: d.From,
 	})
 	return smtp.SendMail(d.SMTPAddr, d.smtpAuth, d.SiteEmail, []string{address}, buf.Bytes())
 }
@@ -671,4 +673,5 @@ func (d *PasswordAuthSMTPEmailSenderDelegate) SendLostPasswordLink(address, url 
 type MailTemplateData struct {
 	Url  string
 	Mail string
+	From string
 }
