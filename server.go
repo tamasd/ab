@@ -301,7 +301,9 @@ func HTTPSRedirectServer(httpsAddr, httpAddr string) error {
 	}
 
 	srv.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "https://"+httpsAddr+"/"+r.RequestURI, http.StatusMovedPermanently)
+		newUrl := "https://" + httpsAddr + "/" + r.RequestURI
+		LogTrace(r).Printf("Redirecting %s to %s via HTTPSRedirectServer\n", r.URL.String(), newUrl)
+		http.Redirect(w, r, newUrl, http.StatusMovedPermanently)
 	})
 
 	return srv.ListenAndServe()
@@ -317,8 +319,11 @@ func RedirectServer(addr, redirectAddr, certFile, keyFile string) error {
 		if r.TLS != nil {
 			proto = "https"
 		}
+		newUrl := proto + "://" + redirectAddr + "/" + r.RequestURI
 
-		http.Redirect(w, r, proto+"://"+redirectAddr+"/"+r.RequestURI, http.StatusMovedPermanently)
+		LogTrace(r).Printf("Redirecting %s to %s via RedirectServer\n", r.URL.String(), newUrl)
+
+		http.Redirect(w, r, newUrl, http.StatusMovedPermanently)
 	})
 
 	if certFile != "" && keyFile != "" {
