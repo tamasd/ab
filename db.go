@@ -151,6 +151,16 @@ func ConvertDBError(err error, conv func(*pq.Error) VerboseError) error {
 	return err
 }
 
+func ConstraintErrorConverter(msgMap map[string]string) func(*pq.Error) VerboseError {
+	return func(err *pq.Error) VerboseError {
+		if msg, ok := msgMap[err.Constraint]; ok {
+			return WrapError(err, msg)
+		}
+
+		return NewVerboseError(err.Message, err.Detail)
+	}
+}
+
 func DBErrorToVerboseString(err *pq.Error) string {
 	return fmt.Sprintf(`
 	Severity         %s
