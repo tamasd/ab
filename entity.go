@@ -14,14 +14,9 @@
 
 package ab
 
-// Reserved for later use. Currectly used by the entity generator only.
-type Validator interface {
-	Validate() error
-}
-
 // Interface for the entities.
 //
-// Currently this is used by the entity generator only. See the documentation of the entity package for more information.
+// Types implementing the Entity interface are expected to be pointers to structs.
 type Entity interface {
 	Validator
 	GetID() string

@@ -17,6 +17,7 @@ package ab
 import (
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -56,4 +57,24 @@ func RestrictPrivateAddressMiddleware() func(http.Handler) http.Handler {
 // The redirect destination is read from the destination URL parameter.
 func RedirectDestination(r *http.Request) string {
 	return "/" + r.URL.Query().Get("destination")
+}
+
+// Pager is a function that implements pagination for listing endpoints.
+//
+// It extracts the "page" query from the url, and returns the offset to that given page.
+// The parameter limit specifies the number of elements on a given page.
+func Pager(r *http.Request, limit int) int {
+	start := 0
+
+	if page := r.URL.Query().Get("page"); page != "" {
+		pagenum, err := strconv.Atoi(page)
+		MaybeFail(r, http.StatusBadRequest, err)
+		start = (pagenum - 1) * limit
+	}
+
+	return start
+}
+
+type Validator interface {
+	Validate() error
 }
