@@ -27,16 +27,19 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	"github.com/nbio/hitch"
+	"github.com/julienschmidt/httprouter"
+	"github.com/nbio/httpcontext"
 	"github.com/spf13/viper"
 	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/util"
 )
 
+const paramKey = "abparam"
+
 // A service is an unit of functionality. It probably has database objects, that will be checked an installed when the service is added to the server.
 type Service interface {
 	// Register the Service endpoints
-	Register(*hitch.Hitch) error
+	Register(*Server) error
 	// Checks if the schema is installed
 	SchemaInstalled(db DB) bool
 	// Construct SQL string to install the schema
@@ -211,21 +214,117 @@ func PetBunny(cfg *viper.Viper, logger *log.Log, eh ErrorHandler, topMiddlewares
 
 // The main server struct.
 type Server struct {
-	*hitch.Hitch
-	conn      *sql.DB
-	Logger    *log.Log
-	TLSConfig *tls.Config
+	*httprouter.Router
+	conn        *sql.DB
+	middlewares []func(http.Handler) http.Handler
+	Logger      *log.Log
+	TLSConfig   *tls.Config
 }
 
 // Creates a new server with a given cookie secret.
 func NewServer(conn *sql.DB) *Server {
+	router := httprouter.New()
+	router.HandleMethodNotAllowed = false
 	s := &Server{
-		Hitch:  hitch.New(),
+		Router: router,
 		conn:   conn,
 		Logger: log.DefaultOSLogger(),
 	}
 
 	return s
+}
+
+func (s *Server) Use(middleware ...func(http.Handler) http.Handler) {
+	s.middlewares = append(s.middlewares, middleware...)
+}
+
+func (s *Server) UseHandler(h http.Handler) {
+	s.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+			next.ServeHTTP(w, r)
+		})
+	})
+}
+
+func (s *Server) Handler() http.Handler {
+	return wrapHandler(s.Router, s.middlewares...)
+}
+
+func wrapHandler(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		handler = middlewares[i](handler)
+	}
+
+	return handler
+}
+
+func (s *Server) Handle(method, path string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) {
+	handler = wrapHandler(handler, middlewares...)
+	s.Router.Handle(method, path, httprouter.Handle(func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+		httpcontext.Set(r, paramKey, p)
+		handler.ServeHTTP(w, r)
+	}))
+}
+
+func (s *Server) Head(path string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("HEAD", path, handler, middlewares...)
+}
+
+func (s *Server) Get(path string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("GET", path, handler, middlewares...)
+}
+
+func (s *Server) Post(path string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("POST", path, handler, middlewares...)
+}
+
+func (s *Server) Put(path string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("PUT", path, handler, middlewares...)
+}
+
+func (s *Server) Delete(path string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("DELETE", path, handler, middlewares...)
+}
+
+func (s *Server) Patch(path string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("PATCH", path, handler, middlewares...)
+}
+
+func (s *Server) Options(path string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("OPTIONS", path, handler, middlewares...)
+}
+
+func (s *Server) HeadF(path string, handler http.HandlerFunc, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("HEAD", path, handler, middlewares...)
+}
+
+func (s *Server) GetF(path string, handler http.HandlerFunc, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("GET", path, handler, middlewares...)
+}
+
+func (s *Server) PostF(path string, handler http.HandlerFunc, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("POST", path, handler, middlewares...)
+}
+
+func (s *Server) PutF(path string, handler http.HandlerFunc, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("PUT", path, handler, middlewares...)
+}
+
+func (s *Server) DeleteF(path string, handler http.HandlerFunc, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("DELETE", path, handler, middlewares...)
+}
+
+func (s *Server) PatchF(path string, handler http.HandlerFunc, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("PATCH", path, handler, middlewares...)
+}
+
+func (s *Server) OptionsF(path string, handler http.HandlerFunc, middlewares ...func(http.Handler) http.Handler) {
+	s.Handle("OPTIONS", path, handler, middlewares...)
+}
+
+func GetParams(r *http.Request) httprouter.Params {
+	return httpcontext.Get(r, paramKey).(httprouter.Params)
 }
 
 // Returns the server's DB connection if there's any.
@@ -235,7 +334,7 @@ func (s *Server) GetDBConnection() DB {
 
 // Adds a local directory to the router.
 func (s *Server) AddLocalDir(prefix, path string) *Server {
-	s.Hitch.Router.ServeFiles(prefix+"/*filepath", http.Dir(path))
+	s.ServeFiles(prefix+"/*filepath", http.Dir(path))
 
 	return s
 }
@@ -253,7 +352,7 @@ func (s *Server) AddFile(path, file string) *Server {
 //
 // See the Service interface for more information.
 func (s *Server) RegisterService(svc Service) {
-	svc.Register(s.Hitch)
+	svc.Register(s)
 	if s.conn != nil && !svc.SchemaInstalled(s.conn) {
 		sql := svc.SchemaSQL()
 		_, err := s.conn.Exec(sql)
@@ -267,7 +366,7 @@ func (s *Server) RegisterService(svc Service) {
 func (s *Server) StartHTTPS(addr, certFile, keyFile string) error {
 	srv := &http.Server{
 		Addr:      addr,
-		Handler:   s.Hitch.Handler(),
+		Handler:   s.Handler(),
 		TLSConfig: s.TLSConfig,
 	}
 

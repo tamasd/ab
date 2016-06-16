@@ -23,7 +23,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nbio/hitch"
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/util"
 )
@@ -36,7 +35,7 @@ type authProviderLabel struct {
 type AuthProvider interface {
 	GetName() string  // machine name of the provider (usually a lowercase word, max 32 characters)
 	GetLabel() string // this is displayed to the user
-	Register(baseURL string, h *hitch.Hitch, user UserDelegate)
+	Register(baseURL string, srv *ab.Server, user UserDelegate)
 }
 
 var _ ab.Service = &Service{}
@@ -95,11 +94,11 @@ func (s *Service) AddProvider(p AuthProvider) {
 	s.providers = append(s.providers, p)
 }
 
-func (s *Service) Register(h *hitch.Hitch) error {
+func (s *Service) Register(srv *ab.Server) error {
 	providers := []authProviderLabel{}
 
 	for _, p := range s.providers {
-		p.Register(s.BaseURL, h, s.user)
+		p.Register(s.BaseURL, srv, s.user)
 
 		providers = append(providers, authProviderLabel{
 			Id:    p.GetName(),
@@ -107,12 +106,12 @@ func (s *Service) Register(h *hitch.Hitch) error {
 		})
 	}
 
-	h.Get("/api/providers/auth", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Get("/api/providers/auth", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ab.Render(r).JSON(providers)
 	}))
 
-	h.Get("/api/providers/auth/:uuid", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		uuid := hitch.Params(r).ByName("uuid")
+	srv.Get("/api/providers/auth/:uuid", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uuid := ab.GetParams(r).ByName("uuid")
 		db := ab.GetDB(r)
 		sess := ab.GetSession(r)
 		uid := sess["uid"] // TODO don't hardcode this
@@ -142,7 +141,7 @@ func (s *Service) Register(h *hitch.Hitch) error {
 		ab.Render(r).JSON(provs)
 	}))
 
-	h.Get("/api/auth/logout", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Get("/api/auth/logout", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
 		for k := range sess {
 			delete(sess, k)

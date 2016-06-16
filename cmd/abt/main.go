@@ -21,7 +21,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tamasd/ab/lib/log"
-	"github.com/tamasd/ab/tools/entity"
 	"github.com/tamasd/ab/tools/gensecret"
 	"github.com/tamasd/ab/tools/watch"
 )
@@ -33,7 +32,7 @@ func main() {
 
 	abtCmd := &cobra.Command{
 		Use:   "abt",
-		Short: "abt is a command line helper for the Alien Bunny kit",
+		Short: "abt is a command line helper for Alien Bunny",
 	}
 
 	var (
@@ -50,7 +49,6 @@ func main() {
 	}
 
 	abtCmd.AddCommand(
-		entitycmd.CreateEntityCmd(logger),
 		watchcmd.CreateWatchCmd(logger),
 		gensecretcmd.CreateGenSecretCMD(logger),
 	)

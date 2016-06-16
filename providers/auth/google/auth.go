@@ -25,8 +25,8 @@ import (
 	"google.golang.org/api/plus/v1"
 )
 
-func NewGoogleAuthProvider(creds auth.OAuthCredentials, delegate GoogleUserDelegate) *auth.OAuth2Provider {
-	return auth.NewOAuth2Provider(NewGoogleAuthProviderDelegate(creds, delegate))
+func NewGoogleAuthProvider(ec *ab.EntityController, creds auth.OAuthCredentials, delegate GoogleUserDelegate) *auth.OAuth2Provider {
+	return auth.NewOAuth2Provider(ec, NewGoogleAuthProviderDelegate(creds, delegate))
 }
 
 type GoogleUserDelegate interface {

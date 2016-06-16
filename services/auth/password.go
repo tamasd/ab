@@ -38,7 +38,6 @@ import (
 	"github.com/boombuler/barcode/qr"
 	"github.com/dgryski/dgoogauth"
 	"github.com/lib/pq"
-	"github.com/nbio/hitch"
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/util"
 	"golang.org/x/crypto/scrypt"
@@ -71,12 +70,14 @@ var _ AuthProvider = &PasswordAuthProvider{}
 type PasswordAuthProvider struct {
 	delegate      PasswordAuthProviderDelegate
 	emailDelegate PasswordAuthEmailSenderDelegate
+	controller    *ab.EntityController
 }
 
-func NewPasswordAuthProvider(delegate PasswordAuthProviderDelegate, emailDelegate PasswordAuthEmailSenderDelegate) *PasswordAuthProvider {
+func NewPasswordAuthProvider(ec *ab.EntityController, delegate PasswordAuthProviderDelegate, emailDelegate PasswordAuthEmailSenderDelegate) *PasswordAuthProvider {
 	return &PasswordAuthProvider{
 		delegate:      delegate,
 		emailDelegate: emailDelegate,
+		controller:    ec,
 	}
 }
 
@@ -88,10 +89,10 @@ func (p *PasswordAuthProvider) GetLabel() string {
 	return "Password"
 }
 
-func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user UserDelegate) {
+func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user UserDelegate) {
 	name := p.GetName()
 
-	h.Post("/api/auth/"+name+"/register", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Post("/api/auth/"+name+"/register", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		postData := p.delegate.GetPassword()
 
 		ab.MustDecode(r, postData)
@@ -100,12 +101,12 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 			ab.Fail(r, http.StatusBadRequest, ab.NewVerboseError("", "id was provided for user"))
 		}
 
-		ab.MaybeFail(r, http.StatusBadRequest, postData.Validate())
+		ab.MaybeFail(r, http.StatusBadRequest, p.controller.Validate(postData.GetEntity()))
 		ab.MaybeFail(r, http.StatusBadRequest, postData.ValidatePassword())
 
 		db := ab.GetTransaction(r)
 
-		err := postData.Insert(db)
+		err := p.controller.Insert(db, postData.GetEntity())
 		ab.MaybeFail(r, http.StatusBadRequest, ab.ConvertDBError(err, p.delegate.GetDBErrorConverter()))
 
 		hash, err := defaultHashPassword(postData.GetPassword())
@@ -129,7 +130,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		ab.Render(r).SetCode(http.StatusCreated)
 	}), NotLoggedInMiddleware(user))
 
-	h.Get("/api/auth/"+name+"/verifyemail", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Get("/api/auth/"+name+"/verifyemail", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uuid := r.URL.Query().Get("uuid")
 		code := r.URL.Query().Get("code")
 
@@ -159,7 +160,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		http.Redirect(w, r, ab.RedirectDestination(r), http.StatusTemporaryRedirect)
 	}), ab.CSRFGetMiddleware("token"), NotLoggedInMiddleware(user))
 
-	h.Post("/api/auth/"+name+"/login", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Post("/api/auth/"+name+"/login", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
 		db := ab.GetDB(r)
 
@@ -199,7 +200,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		}
 	}), NotLoggedInMiddleware(user))
 
-	h.Get("/api/auth/"+name+"/has2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Get("/api/auth/"+name+"/has2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		db := ab.GetDB(r)
 		uid := user.CurrentUser(r)
 
@@ -213,7 +214,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		})
 	}), LoggedInMiddleware(user))
 
-	h.Post("/api/auth/"+name+"/2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Post("/api/auth/"+name+"/2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
 		tmpUser := sess["2fa_user"]
 		if tmpUser == "" {
@@ -240,7 +241,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		}
 	}), NotLoggedInMiddleware(user))
 
-	h.Get("/api/auth/"+name+"/add2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Get("/api/auth/"+name+"/add2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
 		var secret string
 
@@ -283,7 +284,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		}).SetCode(http.StatusAccepted)
 	}), ab.CSRFGetMiddleware("token"), LoggedInMiddleware(user))
 
-	h.Post("/api/auth/"+name+"/add2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Post("/api/auth/"+name+"/add2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
 		secret := util.DecryptString(sess["2fa_secret"])
 
@@ -316,7 +317,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		}
 	}), LoggedInMiddleware(user))
 
-	h.Post("/api/auth/"+name+"/disable2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Post("/api/auth/"+name+"/disable2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d := remove2faData{}
 		ab.MustDecode(r, &d)
 
@@ -341,7 +342,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 	}), LoggedInMiddleware(user))
 
-	h.Post("/api/auth/"+name+"/changepassword", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Post("/api/auth/"+name+"/changepassword", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
 		db := ab.GetTransaction(r)
 		uid := user.CurrentUser(r)
@@ -390,7 +391,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 	}), LoggedInMiddleware(user))
 
-	h.Post("/api/auth/"+name+"/lostpassword", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Post("/api/auth/"+name+"/lostpassword", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d := lostPasswordData{}
 		ab.MustDecode(r, &d)
 
@@ -413,7 +414,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, h *hitch.Hitch, user Use
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 	}), NotLoggedInMiddleware(user))
 
-	h.Get("/api/auth/"+name+"/onetimelogin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Get("/api/auth/"+name+"/onetimelogin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
 		uuid := r.URL.Query().Get("uuid")
 		if code == "" || uuid == "" {
@@ -571,6 +572,7 @@ type Password interface {
 	ab.Entity
 	GetPassword() string
 	ValidatePassword() error
+	GetEntity() ab.Entity
 }
 
 type PasswordFields struct {

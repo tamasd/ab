@@ -22,7 +22,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nbio/hitch"
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/util"
 )
@@ -226,8 +225,8 @@ func (s *SearchService) AddDelegate(delegateType string, delegate SearchServiceD
 	return s
 }
 
-func (s *SearchService) Register(h *hitch.Hitch) error {
-	h.Post("/api/search", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (s *SearchService) Register(srv *ab.Server) error {
+	srv.Post("/api/search", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d := SearchPostData{}
 		ab.MustDecode(r, &d)
 

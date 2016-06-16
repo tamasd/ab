@@ -17,32 +17,99 @@ package ab
 import (
 	"bytes"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/http/cookiejar"
 	"os"
 	"strconv"
 	"testing"
 
-	"github.com/nbio/hitch"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/viper"
-	"github.com/tamasd/ab/util"
 )
-
-const base = "http://localhost:9999"
-
-var hasDB = false
 
 type testDecode struct {
 	A int
 	B string
+}
+
+const base = "http://localhost:9999"
+
+var ServerSetups []func(*viper.Viper, *Server) error
+
+func TestMain(m *testing.M) {
+	srv := &TestServer{
+		AssetsDir: "./testing/",
+		Addr:      "localhost:9999",
+	}
+	srv.StartAndCleanUp(m, func(cfg *viper.Viper, s *Server) error {
+		for _, setup := range ServerSetups {
+			if err := setup(cfg, s); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func init() {
+	ServerSetups = append(ServerSetups, func(cfg *viper.Viper, s *Server) error {
+		s.AddFile("/frontend", "testing/index.html")
+
+		s.Get("/csrf", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			Render(r).Text("CSRF SUCCESS")
+		}), CSRFGetMiddleware("token"))
+		s.Post("/csrf", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			Render(r).Text("CSRF SUCCESS")
+		}))
+
+		s.Get("/empty", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		}))
+
+		s.Get("/restricted", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			Render(r).Text("RESTRICTED")
+		}), RestrictAddressMiddleware("192.168.255.255/8"))
+
+		s.Get("/restrictedok", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			Render(r).Text("RestrictedOK")
+		}), RestrictAddressMiddleware("127.0.0.1/8"))
+
+		s.Post("/decode", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			v := testDecode{}
+			MustDecode(r, &v)
+
+			Render(r).JSON(v)
+		}))
+
+		s.Get("/panic", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic("oops")
+		}))
+
+		s.Get("/fail", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			MaybeFail(r, http.StatusInternalServerError, errors.New("oops"))
+		}))
+
+		buf1k := make([]byte, 512)
+		io.ReadFull(rand.Reader, buf1k)
+		hex1k := hex.EncodeToString(buf1k)
+		s.Get("/1k", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			Render(r).Text(hex1k)
+		}))
+
+		s.Get("/binary", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			file, err := os.Open("testing/binary.bin")
+			MaybeFail(r, http.StatusInternalServerError, err)
+			Render(r).Binary("application/octet-stream", "binary.bin", file)
+		}))
+
+		svc := &testService{}
+		s.RegisterService(svc)
+
+		return nil
+	})
 }
 
 var _ Service = &testService{}
@@ -50,8 +117,8 @@ var _ Service = &testService{}
 type testService struct {
 }
 
-func (s *testService) Register(h *hitch.Hitch) error {
-	h.Get("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (s *testService) Register(srv *Server) error {
+	srv.Get("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rows, err := GetDB(r).Query("SELECT * FROM test ORDER BY a")
 		MaybeFail(r, http.StatusInternalServerError, err)
 		ret := []testDecode{}
@@ -64,15 +131,15 @@ func (s *testService) Register(h *hitch.Hitch) error {
 		Render(r).JSON(ret)
 	}))
 
-	h.Get("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := hitch.Params(r).ByName("id")
+	srv.Get("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := GetParams(r).ByName("id")
 		d := testDecode{}
 		MaybeFail(r, http.StatusInternalServerError, GetDB(r).QueryRow("SELECT * FROM test WHERE a = $1", id).Scan(&d.A, &d.B))
 
 		Render(r).JSON(d)
 	}))
 
-	h.Post("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Post("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d := testDecode{}
 		MustDecode(r, &d)
 		_, err := GetTransaction(r).Exec("INSERT INTO test(b) VALUES($1)", d.B)
@@ -80,8 +147,8 @@ func (s *testService) Register(h *hitch.Hitch) error {
 		Render(r).SetCode(http.StatusCreated)
 	}))
 
-	h.Put("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.Atoi(hitch.Params(r).ByName("id"))
+	srv.Put("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(GetParams(r).ByName("id"))
 		MaybeFail(r, http.StatusBadRequest, err)
 		d := testDecode{}
 		MustDecode(r, &d)
@@ -97,8 +164,8 @@ func (s *testService) Register(h *hitch.Hitch) error {
 		}
 	}))
 
-	h.Delete("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := hitch.Params(r).ByName("id")
+	srv.Delete("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := GetParams(r).ByName("id")
 		res, err := GetTransaction(r).Exec("DELETE FROM test WHERE a = $1", id)
 		MaybeFail(r, http.StatusInternalServerError, err)
 		aff, _ := res.RowsAffected()
@@ -118,140 +185,8 @@ func (s *testService) SchemaSQL() string {
 	return "CREATE TABLE test(a serial NOT NULL PRIMARY KEY, b text NOT NULL)"
 }
 
-func setupServer() *viper.Viper {
-	cfg := viper.New()
-	cfg.SetConfigName("test")
-	cfg.AddConfigPath(".")
-	cfg.AutomaticEnv()
-	cfg.ReadInConfig()
-	cfg.Set("CookieSecret", "a1b95d2b2ace33d3352abd0beeb9aeb165dc7fcedcff454155907eab621c6d40b1ba598a74e2dbbaa4d031d5b4ecb841d37eb68562519409cd2ef244cdf5dd9c")
-	cfg.Set("assetsDir", "testing/")
-
-	hasDB = cfg.IsSet("PGConnectString")
-
-	s, err := PetBunny(cfg, nil, nil)
-	if err != nil {
-		panic(err)
-	}
-	s.AddFile("/frontend", "testing/index.html")
-
-	s.Get("/csrf", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		Render(r).Text("CSRF SUCCESS")
-	}), CSRFGetMiddleware("token"))
-	s.Post("/csrf", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		Render(r).Text("CSRF SUCCESS")
-	}))
-
-	s.Get("/empty", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	}))
-
-	s.Get("/restricted", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		Render(r).Text("RESTRICTED")
-	}), RestrictAddressMiddleware("192.168.255.255/8"))
-
-	s.Get("/restrictedok", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		Render(r).Text("RestrictedOK")
-	}), RestrictAddressMiddleware("127.0.0.1/8"))
-
-	s.Post("/decode", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		v := testDecode{}
-		MustDecode(r, &v)
-
-		Render(r).JSON(v)
-	}))
-
-	s.Get("/panic", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		panic("oops")
-	}))
-
-	s.Get("/fail", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		MaybeFail(r, http.StatusInternalServerError, errors.New("oops"))
-	}))
-
-	buf1k := make([]byte, 512)
-	io.ReadFull(rand.Reader, buf1k)
-	hex1k := hex.EncodeToString(buf1k)
-	s.Get("/1k", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		Render(r).Text(hex1k)
-	}))
-
-	s.Get("/binary", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		file, err := os.Open("testing/binary.bin")
-		MaybeFail(r, http.StatusInternalServerError, err)
-		Render(r).Binary("application/octet-stream", "binary.bin", file)
-	}))
-
-	http.DefaultClient.Jar, _ = cookiejar.New(nil)
-
-	svc := &testService{}
-	s.RegisterService(svc)
-
-	go s.StartHTTP("localhost:9999")
-
-	return cfg
-}
-
-func TestMain(m *testing.M) {
-	cfg := setupServer()
-
-	res := m.Run()
-
-	connStr := cfg.GetString("PGConnectString")
-	if connStr != "" {
-		conn, _ := sql.Open("postgres", connStr)
-		conn.Exec(`
-			DROP SCHEMA public CASCADE;
-			CREATE SCHEMA public;
-			GRANT ALL ON SCHEMA public TO postgres;
-			GRANT ALL ON SCHEMA public TO public;
-			COMMENT ON SCHEMA public IS 'standard public schema';
-		`)
-
-		conn.Close()
-	}
-
-	os.Exit(res)
-}
-
-func getToken() string {
-	req, _ := http.NewRequest("GET", base+"/api/token", nil)
-	req.Header.Add("Accept", "text/plain")
-	resp, err := http.DefaultClient.Do(req)
-	So(err, ShouldBeNil)
-	So(resp.StatusCode, ShouldEqual, http.StatusOK)
-
-	token := util.ResponseBodyToString(resp)
-	So(token, ShouldNotEqual, "")
-
-	cookieToken := ""
-	for _, cookie := range resp.Cookies() {
-		if cookie.Name == "_CSRF" {
-			cookieToken = cookie.Value
-			break
-		}
-	}
-
-	So(cookieToken, ShouldEqual, token)
-
-	return token
-}
-
-func consumePrefix(r *http.Response) {
-	prefix := make([]byte, 6)
-	n, err := r.Body.Read(prefix)
-	So(n, ShouldEqual, 6)
-	So(err, ShouldBeNil)
-	So(prefix, ShouldResemble, []byte(")]}',\n"))
-}
-
 func TestServiceCRUD(t *testing.T) {
-	if !hasDB {
-		t.SkipNow()
-	}
-
 	Convey("Given a simple service, loaded with sample content", t, func() {
-		token := getToken()
-
 		ct := []testDecode{
 			testDecode{1, "a"},
 			testDecode{2, "b"},
@@ -260,69 +195,48 @@ func TestServiceCRUD(t *testing.T) {
 			testDecode{5, "e"},
 		}
 
+		tc := NewTestClientWithToken(base)
+
 		for _, c := range ct {
-			buf := bytes.NewBuffer(nil)
-			So(json.NewEncoder(buf).Encode(c), ShouldBeNil)
-			req, _ := http.NewRequest("POST", base+"/test", buf)
-			req.Header.Add("X-CSRF-Token", token)
-			req.Header.Add("Content-Type", "application/json")
-			resp, err := http.DefaultClient.Do(req)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			tc.Request("POST", "/test", tc.JSONBuffer(c), nil, nil, http.StatusCreated)
 		}
 
 		Convey("It should return all content", func() {
-			data := []testDecode{}
-			resp, err := http.Get(base + "/test")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusOK)
-			consumePrefix(resp)
-			So(json.NewDecoder(resp.Body).Decode(&data), ShouldBeNil)
-			So(data, ShouldResemble, ct)
+			tc.Request("GET", "/test", nil, nil, func(resp *http.Response) {
+				tc.AssertJSON(resp, &[]testDecode{}, &ct)
+			}, http.StatusOK)
 		})
 	})
 }
 
 func TestFrontendPath(t *testing.T) {
 	Convey("Given a frontend path", t, func() {
-		data, err := ioutil.ReadFile("testing/index.html")
-		datastr := string(data)
-		So(err, ShouldBeNil)
+		tc := NewTestClient(base)
 
 		Convey("It should return the index.html file", func() {
-			resp, err := http.Get(base + "/frontend")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusOK)
-			respdata, err := ioutil.ReadAll(resp.Body)
-			respdatastr := string(respdata)
-			So(err, ShouldBeNil)
-			So(respdatastr, ShouldResemble, datastr)
+			tc.Request("GET", "/frontend", nil, func(req *http.Request) {
+				req.Header.Set("Accept", "text/html")
+			}, func(resp *http.Response) {
+				tc.AssertFile(resp, "testing/index.html")
+			}, http.StatusOK)
 		})
 	})
 }
 
 func TestDecode(t *testing.T) {
 	Convey("Given an endpoint which accepts JSON", t, func() {
-		token := getToken()
+		tc := NewTestClientWithToken(base)
 
 		Convey("It should fail on invalid data", func() {
 			buf := bytes.NewBuffer(nil)
 			buf.WriteString("[<>?<<><]]]}}}}")
-			req, _ := http.NewRequest("POST", base+"/decode", buf)
-			req.Header.Add("X-CSRF-Token", token)
-			req.Header.Add("Content-Type", "application/json")
-			resp, err := http.DefaultClient.Do(req)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+			tc.Request("POST", "/decode", buf, nil, nil, http.StatusBadRequest)
 		})
 
 		Convey("It should fail on invalid content type", func() {
-			req, _ := http.NewRequest("POST", base+"/decode", nil)
-			req.Header.Add("X-CSRF-Token", token)
-			req.Header.Add("Content-Type", "xxx/invalid")
-			resp, err := http.DefaultClient.Do(req)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusUnsupportedMediaType)
+			tc.Request("POST", "/decode", nil, func(req *http.Request) {
+				req.Header.Set("Content-Type", "xxx/invalid")
+			}, nil, http.StatusUnsupportedMediaType)
 		})
 
 		Convey("It should return the POST data", func() {
@@ -330,115 +244,86 @@ func TestDecode(t *testing.T) {
 				A: 65536,
 				B: "asdf",
 			}
-			buf := bytes.NewBuffer(nil)
-			So(json.NewEncoder(buf).Encode(data), ShouldBeNil)
-			req, _ := http.NewRequest("POST", base+"/decode", buf)
-			req.Header.Add("X-CSRF-Token", token)
-			req.Header.Add("Content-Type", "application/json")
-			resp, err := http.DefaultClient.Do(req)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusOK)
-			consumePrefix(resp)
-			respData := testDecode{}
-			So(json.NewDecoder(resp.Body).Decode(&respData), ShouldBeNil)
-			So(respData, ShouldResemble, data)
+			tc.Request("POST", "/decode", tc.JSONBuffer(data), nil, func(resp *http.Response) {
+				tc.AssertJSON(resp, &testDecode{}, &data)
+			}, http.StatusOK)
 		})
 	})
 }
 
 func TestError(t *testing.T) {
 	Convey("Given a handler which panics", t, func() {
+		tc := NewTestClient(base)
 		Convey("It must return http.StatusInternalServerError", func() {
-			resp, err := http.Get(base + "/panic")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			tc.Request("GET", "/panic", nil, nil, nil, http.StatusInternalServerError)
 		})
 	})
 
 	Convey("Given an endpoint which fails", t, func() {
+		tc := NewTestClient(base)
 		Convey("It should return http.StatusInternalServerError", func() {
-			resp, err := http.Get(base + "/fail")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			tc.Request("GET", "/fail", nil, nil, nil, http.StatusInternalServerError)
 		})
 	})
 }
 
 func TestCSRF(t *testing.T) {
 	Convey("Given a simple server", t, func() {
+		tc := NewTestClientWithToken(base)
+
 		Convey("A request without token must return Forbidden", func() {
-			resp, err := http.PostForm(base+"/csrf", nil)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusForbidden)
+			tc.Request("POST", "/csrf", nil, func(req *http.Request) {
+				req.Header.Del("X-CSRF-Token")
+			}, nil, http.StatusForbidden)
 		})
 
 		Convey("A request with token should succeed", func() {
-			token := getToken()
-
-			req, _ := http.NewRequest("POST", base+"/csrf", nil)
-			req.Header.Add("X-CSRF-Token", token)
-			resp, err := http.DefaultClient.Do(req)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusOK)
-			data := util.ResponseBodyToString(resp)
-			So(data, ShouldEqual, "CSRF SUCCESS")
+			tc.Request("POST", "/csrf", nil, nil, func(resp *http.Response) {
+				So(tc.ReadBody(resp, false), ShouldEqual, "CSRF SUCCESS")
+			}, http.StatusOK)
 		})
 
 		Convey("A GET request without token should fail", func() {
-			resp, err := http.Get(base + "/csrf")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusForbidden)
+			tc.Request("GET", "/csrf", nil, nil, nil, http.StatusForbidden)
 		})
 
 		Convey("A GET request with token should succeed", func() {
-			token := getToken()
-
-			resp, err := http.Get(base + "/csrf?token=" + token)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusOK)
-			data := util.ResponseBodyToString(resp)
-			So(data, ShouldEqual, "CSRF SUCCESS")
+			tc.Request("GET", "/csrf?token="+tc.Token, nil, nil, func(resp *http.Response) {
+				So(tc.ReadBody(resp, false), ShouldEqual, "CSRF SUCCESS")
+			}, http.StatusOK)
 		})
 	})
 }
 
 func TestBinary(t *testing.T) {
-	Convey("Given a simple server", t, func() {
-		resp, err := http.Get(base + "/binary")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode, ShouldEqual, http.StatusOK)
-
-		file, err := ioutil.ReadFile("testing/binary.bin")
-		So(err, ShouldBeNil)
-
-		recv, err := ioutil.ReadAll(resp.Body)
-		So(err, ShouldBeNil)
-		So(recv, ShouldResemble, file)
+	Convey("Given a binary endpoint", t, func() {
+		tc := NewTestClient(base)
+		Convey("The response must be exactly the same as the file", func() {
+			tc.Request("GET", "/binary", nil, nil, func(resp *http.Response) {
+				tc.AssertFile(resp, "testing/binary.bin")
+			}, http.StatusOK)
+		})
 	})
 }
 
 func TestEmptyEndpoint(t *testing.T) {
 	Convey("Given an empty endpoint", t, func() {
+		tc := NewTestClient(base)
 		Convey("A request should return http.StatusNoContent", func() {
-			resp, err := http.Get(base + "/empty")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusNoContent)
+			tc.Request("GET", "/empty", nil, nil, nil, http.StatusNoContent)
 		})
 	})
 }
 
 func TestRestrictedEndpoint(t *testing.T) {
 	Convey("Given restricted endpoints", t, func() {
+		tc := NewTestClient(base)
 		Convey("A request must return http.StatusServiceUnavailable with an invalid IP", func() {
-			resp, err := http.Get(base + "/restricted")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
+			tc.Request("GET", "/restricted", nil, nil, nil, http.StatusServiceUnavailable)
 		})
 
 		Convey("A request must not return http.StatusServiceUnavailable with a valid IP", func() {
-			resp, err := http.Get(base + "/restrictedok")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			tc.Request("GET", "/restrictedok", nil, nil, nil, http.StatusOK)
 		})
 	})
 }

@@ -16,13 +16,11 @@ package auth
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,82 +35,52 @@ import (
 	"github.com/tamasd/ab/util"
 )
 
-//go:generate abt --generate-service-struct-name=testUserService --output=password_entity_test.go entity TestUser
-
 const base = "http://localhost:9997"
 const pw = `VmlX7sn_+ti(BC{<'@8>]xHAhLN!p}w=vbBiHxNXv{_7#lfO|f(GAjF<::7=aw/]`
-
-var hasDB = false
 
 type TestUser struct {
 	UUID string `dbtype:"uuid" dbdefault:"uuid_generate_v4()" json:"uuid"`
 	Mail string `json:"mail"`
 }
 
-func setupServer() *viper.Viper {
-	cfg := viper.New()
-	cfg.SetConfigName("test")
-	cfg.AddConfigPath(".")
-	cfg.AutomaticEnv()
-	cfg.ReadInConfig()
-	cfg.Set("CookieSecret", "a1b95d2b2ace33d3352abd0beeb9aeb165dc7fcedcff454155907eab621c6d40b1ba598a74e2dbbaa4d031d5b4ecb841d37eb68562519409cd2ef244cdf5dd9c")
-	cfg.Set("assetsDir", "./")
-
-	hasDB = cfg.IsSet("PGConnectString")
-
-	s, err := ab.PetBunny(cfg, nil, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	pwprovider := NewPasswordAuthProvider(&pwDelegate{db: s.GetDBConnection()}, &mailDelegate{})
-
-	userDelegate := &SessionUserDelegate{
-		DB:         s.GetDBConnection(),
-		TableName:  "testuser",
-		UUIDColumn: "uuid",
-	}
-	authsvc := NewService(base, userDelegate, s.GetDBConnection(), pwprovider)
-
-	s.RegisterService(authsvc)
-
-	tus := &testUserService{}
-	s.RegisterService(tus)
-
-	s.Get("/me", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := ab.GetSession(r)
-		ab.Render(r).Text(sess["uid"])
-	}))
-
-	go s.StartHTTP("localhost:9997")
-
-	authsvc.StopCleanup()
-
-	return cfg
+func (te *TestUser) GetID() string {
+	return te.UUID
 }
 
 func TestMain(m *testing.M) {
-	util.SetKey([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2})
-
-	cfg := setupServer()
-
-	res := m.Run()
-
-	connStr := cfg.GetString("PGConnectString")
-	if connStr != "" {
-		conn, _ := sql.Open("postgres", connStr)
-		conn.Exec(`
-			DROP SCHEMA public CASCADE;
-			CREATE SCHEMA public;
-			GRANT ALL ON SCHEMA public TO postgres;
-			GRANT ALL ON SCHEMA public TO public;
-			COMMENT ON SCHEMA public IS 'standard public schema';
-		`)
-
-		conn.Close()
+	ts := &ab.TestServer{
+		Addr: "localhost:9997",
 	}
 
-	os.Exit(res)
+	ts.StartAndCleanUp(m, func(cfg *viper.Viper, s *ab.Server) error {
+		ec := ab.NewEntityController(s.GetDBConnection())
+		ec.Add(&TestUser{}, nil)
+		pwprovider := NewPasswordAuthProvider(ec, &pwDelegate{
+			db:         s.GetDBConnection(),
+			controller: ec,
+		}, &mailDelegate{})
+
+		userDelegate := &SessionUserDelegate{
+			DB:         s.GetDBConnection(),
+			TableName:  "testuser",
+			UUIDColumn: "uuid",
+		}
+		authsvc := NewService(base, userDelegate, s.GetDBConnection(), pwprovider)
+
+		s.RegisterService(authsvc)
+
+		res := ab.EntityResource(ec, &TestUser{}, ab.EntityResourceConfig{})
+		s.RegisterService(res)
+
+		s.Get("/me", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sess := ab.GetSession(r)
+			ab.Render(r).Text(sess["uid"])
+		}))
+
+		authsvc.StopCleanup()
+
+		return nil
+	})
 }
 
 func TestRegistrationLogin(t *testing.T) {
@@ -237,15 +205,20 @@ type regData struct {
 	PasswordFields
 }
 
+func (rd *regData) GetEntity() ab.Entity {
+	return rd.TestUser
+}
+
 var _ PasswordAuthProviderDelegate = &pwDelegate{}
 
 type pwDelegate struct {
-	db ab.DB
+	db         ab.DB
+	controller *ab.EntityController
 }
 
 func (pd *pwDelegate) GetPassword() Password {
 	return &regData{
-		TestUser:       EmptyTestUser(),
+		TestUser:       &TestUser{},
 		PasswordFields: PasswordFields{},
 	}
 }
@@ -277,7 +250,7 @@ func (pd *pwDelegate) GetDBErrorConverter() func(*pq.Error) ab.VerboseError {
 }
 
 func (pd *pwDelegate) LoadUser(uuid string) (ab.Entity, error) {
-	user, err := LoadTestUser(pd.db, uuid)
+	user, err := pd.controller.Load(nil, "testuser", uuid)
 	if err != nil {
 		return nil, err
 	}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/nbio/hitch"
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/util"
@@ -21,12 +20,14 @@ type OAuth2ProviderDelegate interface {
 var _ AuthProvider = &OAuth2Provider{}
 
 type OAuth2Provider struct {
-	delegate OAuth2ProviderDelegate
+	delegate   OAuth2ProviderDelegate
+	controller *ab.EntityController
 }
 
-func NewOAuth2Provider(delegate OAuth2ProviderDelegate) *OAuth2Provider {
+func NewOAuth2Provider(ec *ab.EntityController, delegate OAuth2ProviderDelegate) *OAuth2Provider {
 	return &OAuth2Provider{
-		delegate: delegate,
+		delegate:   delegate,
+		controller: ec,
 	}
 }
 
@@ -38,12 +39,12 @@ func (p *OAuth2Provider) GetLabel() string {
 	return p.delegate.GetLabel()
 }
 
-func (p *OAuth2Provider) Register(baseURL string, h *hitch.Hitch, user UserDelegate) {
+func (p *OAuth2Provider) Register(baseURL string, srv *ab.Server, user UserDelegate) {
 	name := p.GetName()
 	c := p.delegate.GetConfig()
 	c.RedirectURL = baseURL + "api/auth/" + name + "/callback"
 
-	h.Get("/api/auth/"+name+"/connect", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Get("/api/auth/"+name+"/connect", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.URL.Query().Get("token")
 
 		url := c.AuthCodeURL(token, oauth2.AccessTypeOffline)
@@ -51,7 +52,7 @@ func (p *OAuth2Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 		http.Redirect(w, r, url, http.StatusSeeOther)
 	}), ab.CSRFGetMiddleware("token"))
 
-	h.Get("/api/auth/"+name+"/callback", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Get("/api/auth/"+name+"/callback", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
 		if code == "" {
 			ab.Fail(r, http.StatusBadRequest, errors.New("empty code from "+name))
@@ -93,7 +94,7 @@ func (p *OAuth2Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 			// The user is not found. Let's register the user.
 			if id == "" {
 				ab.LogTrace(r).Println("user not found, creating new user")
-				if err := oauthuser.Insert(db); err != nil {
+				if err := p.controller.Insert(ab.GetTransaction(r), oauthuser); err != nil {
 					ab.Fail(r, http.StatusInternalServerError, err)
 				}
 				id = oauthuser.GetID()

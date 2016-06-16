@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/garyburd/go-oauth/oauth"
-	"github.com/nbio/hitch"
 	"github.com/tamasd/ab"
 	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/util"
@@ -21,12 +20,14 @@ type OAuth1ProviderDelegate interface {
 var _ AuthProvider = &OAuth1Provider{}
 
 type OAuth1Provider struct {
-	delegate OAuth1ProviderDelegate
+	delegate   OAuth1ProviderDelegate
+	controller *ab.EntityController
 }
 
-func NewOAuth1Provider(delegate OAuth1ProviderDelegate) *OAuth1Provider {
+func NewOAuth1Provider(ec *ab.EntityController, delegate OAuth1ProviderDelegate) *OAuth1Provider {
 	return &OAuth1Provider{
-		delegate: delegate,
+		delegate:   delegate,
+		controller: ec,
 	}
 }
 
@@ -38,12 +39,12 @@ func (p *OAuth1Provider) GetLabel() string {
 	return p.delegate.GetLabel()
 }
 
-func (p *OAuth1Provider) Register(baseURL string, h *hitch.Hitch, user UserDelegate) {
+func (p *OAuth1Provider) Register(baseURL string, srv *ab.Server, user UserDelegate) {
 	name := p.GetName()
 	c := p.delegate.GetClient()
 	callback := baseURL + "api/auth/" + name + "/callback"
 
-	h.Get("/api/auth/"+name+"/connect", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Get("/api/auth/"+name+"/connect", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tmpCred, err := c.RequestTemporaryCredentials(nil, callback+"?token="+r.URL.Query().Get("token"), nil)
 		if err != nil {
 			ab.Fail(r, http.StatusInternalServerError, nil)
@@ -55,7 +56,7 @@ func (p *OAuth1Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 		http.Redirect(w, r, url, http.StatusSeeOther)
 	}), ab.CSRFGetMiddleware("token"))
 
-	h.Get("/api/auth/"+name+"/callback", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv.Get("/api/auth/"+name+"/callback", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s := ab.GetSession(r)
 		tmpCredEncoded := util.DecryptString(s["oauth_"+name+"_tmpcred"])
 		if tmpCredEncoded == "" {
@@ -96,7 +97,7 @@ func (p *OAuth1Provider) Register(baseURL string, h *hitch.Hitch, user UserDeleg
 		} else {
 			id, _ := AuthenticateUser(db, name, authid)
 			if id == "" {
-				if err := oauthuser.Insert(db); err != nil {
+				if err := p.controller.Insert(ab.GetTransaction(r), oauthuser); err != nil {
 					ab.Fail(r, http.StatusInternalServerError, err)
 				}
 				id = oauthuser.GetID()

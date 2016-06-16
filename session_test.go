@@ -25,7 +25,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nbio/hitch"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/tamasd/ab/lib/log"
 	"golang.org/x/net/publicsuffix"
@@ -73,25 +72,25 @@ func TestHTTPScenario(t *testing.T) {
 	Convey("Given a simple HTTP scenario", t, func() {
 		key := getSecretKey()
 
-		h := hitch.New()
-		h.Use(DefaultLoggerMiddleware(log.LOG_OFF))
-		h.Use(SessionMiddleware("", key, nil, time.Hour))
-		h.Post("/set", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := NewServer(nil)
+		srv.Use(DefaultLoggerMiddleware(log.LOG_OFF))
+		srv.Use(SessionMiddleware("", key, nil, time.Hour))
+		srv.Post("/set", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			data, _ := ioutil.ReadAll(r.Body)
 
 			s := GetSession(r)
 			s["data"] = string(data)
 		}))
-		h.Get("/get", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv.Get("/get", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			s := GetSession(r)
 			io.WriteString(w, s["data"])
 		}))
-		h.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			s := GetSession(r)
 			io.WriteString(w, s.Id())
 		}))
 
-		go http.ListenAndServe("localhost:31337", h.Handler())
+		go http.ListenAndServe("localhost:31337", srv.Handler())
 		<-time.After(time.Second)
 
 		jar, _ := cookiejar.New(&cookiejar.Options{
