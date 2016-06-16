@@ -83,6 +83,12 @@ type entityData struct {
 type EntityController struct {
 	db          DB
 	entityTypes map[string]*entityData
+	events      struct {
+		load   entityReadEvents
+		insert entityWriteEvents
+		update entityWriteEvents
+		delete entityWriteEvents
+	}
 }
 
 func NewEntityController(db DB) *EntityController {
@@ -379,6 +385,12 @@ func (ec *EntityController) Load(db DB, entityType string, keys ...interface{}) 
 }
 
 func (ec *EntityController) LoadFromQuery(db DB, entityType string, query string, args ...interface{}) ([]Entity, error) {
+	query, args = ec.events.load.invokeBefore(entityType, query, args)
+	entities, err := ec.loadFromQuery(db, entityType, query, args...)
+	return ec.events.load.invokeAfter(entityType, entities, err)
+}
+
+func (ec *EntityController) loadFromQuery(db DB, entityType string, query string, args ...interface{}) ([]Entity, error) {
 	if db == nil {
 		db = ec.db
 	}
@@ -411,6 +423,13 @@ func (ec *EntityController) LoadFromQuery(db DB, entityType string, query string
 }
 
 func (ec *EntityController) Insert(db DB, e Entity) error {
+	entityType := ec.Type(e)
+	ec.events.insert.invokeBefore(entityType, e)
+	err := ec.insert(db, e)
+	return ec.events.insert.invokeAfter(entityType, e, err)
+}
+
+func (ec *EntityController) insert(db DB, e Entity) error {
 	if db == nil {
 		db = ec.db
 	}
@@ -433,6 +452,13 @@ func (ec *EntityController) Insert(db DB, e Entity) error {
 }
 
 func (ec *EntityController) Update(db DB, e Entity) error {
+	entityType := ec.Type(e)
+	ec.events.update.invokeBefore(entityType, e)
+	err := ec.update(db, e)
+	return ec.events.update.invokeAfter(entityType, e, err)
+}
+
+func (ec *EntityController) update(db DB, e Entity) error {
 	if db == nil {
 		db = ec.db
 	}
@@ -455,6 +481,13 @@ func (ec *EntityController) Update(db DB, e Entity) error {
 }
 
 func (ec *EntityController) Delete(db DB, e Entity) error {
+	entityType := ec.Type(e)
+	ec.events.delete.invokeBefore(entityType, e)
+	err := ec.delete(db, e)
+	return ec.events.delete.invokeAfter(entityType, e, err)
+}
+
+func (ec *EntityController) delete(db DB, e Entity) error {
 	if db == nil {
 		db = ec.db
 	}
@@ -525,4 +558,24 @@ func (ec *EntityController) isJSONField(data *entityData, i int) bool {
 	}
 
 	return false
+}
+
+func (ec *EntityController) AddLoadEvent(evt ...EntityReadEvent) *EntityController {
+	ec.events.load = append(ec.events.load, evt...)
+	return ec
+}
+
+func (ec *EntityController) AddInsertEvent(evt ...EntityWriteEvent) *EntityController {
+	ec.events.insert = append(ec.events.insert, evt...)
+	return ec
+}
+
+func (ec *EntityController) AddUpdateEvent(evt ...EntityWriteEvent) *EntityController {
+	ec.events.update = append(ec.events.update, evt...)
+	return ec
+}
+
+func (ec *EntityController) AddDeleteEvent(evt ...EntityWriteEvent) *EntityController {
+	ec.events.delete = append(ec.events.delete, evt...)
+	return ec
 }
