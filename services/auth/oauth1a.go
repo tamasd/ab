@@ -89,7 +89,7 @@ func (p *OAuth1Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 			ab.Fail(r, http.StatusInternalServerError, err)
 		}
 
-		db := ab.GetDB(r)
+		db := ab.GetTransaction(r)
 
 		if user.IsLoggedIn(r) {
 			id := user.CurrentUser(r)
@@ -97,7 +97,7 @@ func (p *OAuth1Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 		} else {
 			id, _ := AuthenticateUser(db, name, authid)
 			if id == "" {
-				if err := p.controller.Insert(ab.GetTransaction(r), oauthuser); err != nil {
+				if err := p.controller.Insert(db, oauthuser); err != nil {
 					ab.Fail(r, http.StatusInternalServerError, err)
 				}
 				id = oauthuser.GetID()

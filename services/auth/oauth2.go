@@ -78,7 +78,7 @@ func (p *OAuth2Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 			ab.Fail(r, http.StatusInternalServerError, err)
 		}
 
-		db := ab.GetDB(r)
+		db := ab.GetTransaction(r)
 
 		if user.IsLoggedIn(r) {
 			// User is already logged in. This scenario is likely to happen
@@ -94,7 +94,7 @@ func (p *OAuth2Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 			// The user is not found. Let's register the user.
 			if id == "" {
 				ab.LogTrace(r).Println("user not found, creating new user")
-				if err := p.controller.Insert(ab.GetTransaction(r), oauthuser); err != nil {
+				if err := p.controller.Insert(db, oauthuser); err != nil {
 					ab.Fail(r, http.StatusInternalServerError, err)
 				}
 				id = oauthuser.GetID()
