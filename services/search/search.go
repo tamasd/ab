@@ -197,8 +197,14 @@ func (s *SearchService) IndexEntity(entityType string, entity ab.Entity) error {
 	placeholders := []string{}
 	values := []interface{}{}
 	uuid := entity.GetID()
+	existingKeywords := map[string]struct{}{}
 
 	for i, d := range data {
+		if _, exists := existingKeywords[d.Keyword]; exists {
+			continue
+		} else {
+			existingKeywords[d.Keyword] = struct{}{}
+		}
 		if d.Owner == "" {
 			d.Owner = "00000000-0000-0000-0000-000000000000"
 		}
