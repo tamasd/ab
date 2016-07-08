@@ -197,14 +197,8 @@ func (s *SearchService) IndexEntity(entityType string, entity ab.Entity) error {
 	placeholders := []string{}
 	values := []interface{}{}
 	uuid := entity.GetID()
-	existingKeywords := map[string]struct{}{}
 
 	for i, d := range data {
-		if _, exists := existingKeywords[d.Keyword]; exists {
-			continue
-		} else {
-			existingKeywords[d.Keyword] = struct{}{}
-		}
 		if d.Owner == "" {
 			d.Owner = "00000000-0000-0000-0000-000000000000"
 		}
@@ -212,7 +206,7 @@ func (s *SearchService) IndexEntity(entityType string, entity ab.Entity) error {
 		values = append(values, uuid, entityType, d.Keyword, d.Relevance, d.Owner)
 	}
 
-	_, err := s.db.Exec("INSERT INTO search_metadata(uuid, type, keyword, relevance, owner) VALUES "+strings.Join(placeholders, ", ")+";", values...)
+	_, err := s.db.Exec("INSERT INTO search_metadata(uuid, type, keyword, relevance, owner) VALUES "+strings.Join(placeholders, ", ")+" ON CONFLICT DO NOTHING;", values...)
 	return err
 }
 
