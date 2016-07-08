@@ -89,7 +89,7 @@ func (p *OAuth1Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 			ab.Fail(r, http.StatusInternalServerError, err)
 		}
 
-		db := ab.GetTransaction(r)
+		db := ab.GetDB(r)
 
 		if user.IsLoggedIn(r) {
 			id := user.CurrentUser(r)
@@ -110,7 +110,7 @@ func (p *OAuth1Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 		}
 
 		http.Redirect(w, r, ab.RedirectDestination(r), http.StatusSeeOther)
-	}), ab.CSRFGetMiddleware("token"))
+	}), ab.CSRFGetMiddleware("token"), ab.TransactionMiddleware)
 }
 
 func GetOAuth1Client(db ab.DB, logger *log.Log, provider OAuth1ProviderDelegate, uid string) *oauth.Credentials {

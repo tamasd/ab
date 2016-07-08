@@ -160,7 +160,7 @@ func (er *entityResourceDelegate) Validate(data Resource, r *http.Request) {
 
 func (er *entityResourceDelegate) Insert(data Resource, r *http.Request) error {
 	e := er.getEntity(data)
-	return er.controller.Insert(GetTransaction(r), e)
+	return er.controller.Insert(GetDB(r), e)
 }
 
 func (er *entityResourceDelegate) Load(id string, r *http.Request) (Resource, error) {
@@ -181,12 +181,12 @@ func (er *entityResourceDelegate) GetID(data Resource) string {
 
 func (er *entityResourceDelegate) Update(data Resource, r *http.Request) error {
 	e := er.getEntity(data)
-	return er.controller.Update(GetTransaction(r), e)
+	return er.controller.Update(GetDB(r), e)
 }
 
 func (er *entityResourceDelegate) Delete(data Resource, r *http.Request) error {
 	e := er.getEntity(data)
-	return er.controller.Delete(GetTransaction(r), e)
+	return er.controller.Delete(GetDB(r), e)
 }
 
 func (er *entityResourceDelegate) GetName() string {

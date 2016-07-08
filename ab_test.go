@@ -142,10 +142,10 @@ func (s *testService) Register(srv *Server) error {
 	srv.Post("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d := testDecode{}
 		MustDecode(r, &d)
-		_, err := GetTransaction(r).Exec("INSERT INTO test(b) VALUES($1)", d.B)
+		_, err := GetDB(r).Exec("INSERT INTO test(b) VALUES($1)", d.B)
 		MaybeFail(r, http.StatusBadRequest, err)
 		Render(r).SetCode(http.StatusCreated)
-	}))
+	}), TransactionMiddleware)
 
 	srv.Put("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.Atoi(GetParams(r).ByName("id"))
@@ -156,23 +156,23 @@ func (s *testService) Register(srv *Server) error {
 			Fail(r, http.StatusBadRequest, fmt.Errorf("ids must match"))
 		}
 
-		res, err := GetTransaction(r).Exec("UPDATE test SET b = $1 WHERE a = $2", d.B, d.A)
+		res, err := GetDB(r).Exec("UPDATE test SET b = $1 WHERE a = $2", d.B, d.A)
 		MaybeFail(r, http.StatusInternalServerError, err)
 		aff, _ := res.RowsAffected()
 		if aff == 0 {
 			Fail(r, http.StatusNotFound, nil)
 		}
-	}))
+	}), TransactionMiddleware)
 
 	srv.Delete("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := GetParams(r).ByName("id")
-		res, err := GetTransaction(r).Exec("DELETE FROM test WHERE a = $1", id)
+		res, err := GetDB(r).Exec("DELETE FROM test WHERE a = $1", id)
 		MaybeFail(r, http.StatusInternalServerError, err)
 		aff, _ := res.RowsAffected()
 		if aff == 0 {
 			Fail(r, http.StatusNotFound, nil)
 		}
-	}))
+	}), TransactionMiddleware)
 
 	return nil
 }

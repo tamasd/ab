@@ -15,6 +15,7 @@
 package ab
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strconv"
@@ -77,4 +78,9 @@ func Pager(r *http.Request, limit int) int {
 
 type Validator interface {
 	Validate() error
+}
+
+func SetContext(r *http.Request, key, value interface{}) *http.Request {
+	ctx := context.WithValue(r.Context(), key, value)
+	return r.WithContext(ctx)
 }

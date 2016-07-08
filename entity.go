@@ -139,7 +139,7 @@ func (ec *EntityController) Add(e Entity, delegate EntityDelegate) *EntityContro
 	}
 	ec.entityTypes[name].FieldList = strings.Join(fieldlist, ", ")
 
-	ec.entityTypes[name].FieldIndexes.PrimaryKey, ec.entityTypes[name].FieldIndexes.Field, ec.entityTypes[name].FieldIndexes.NoDefaults, ec.entityTypes[name].FieldIndexes.Defaults, ec.entityTypes[name].FieldIndexes.JSON = ec.getEntityFieldIndexes(entityType)
+	ec.setEntityFieldIndexes(entityType, name)
 
 	ec.entityTypes[name].Queries.Select = ec.createSelectQuery(name, prefix, entityType)
 	ec.entityTypes[name].Queries.Insert = ec.createInsertQuery(name, entityType)
@@ -335,7 +335,7 @@ func (ec *EntityController) getDBType(field reflect.StructField) string {
 	return ""
 }
 
-func (ec *EntityController) getEntityFieldIndexes(entityType reflect.Type) ([]int, []int, []int, []int, []int) {
+func (ec *EntityController) setEntityFieldIndexes(entityType reflect.Type, name string) {
 	primaries := []int{}
 	fields := []int{}
 	nodefaults := []int{}
@@ -364,7 +364,11 @@ func (ec *EntityController) getEntityFieldIndexes(entityType reflect.Type) ([]in
 		primaries, fields = fields[:1], fields[1:]
 	}
 
-	return primaries, fields, nodefaults, defaults, jsons
+	ec.entityTypes[name].FieldIndexes.PrimaryKey = primaries
+	ec.entityTypes[name].FieldIndexes.Field = fields
+	ec.entityTypes[name].FieldIndexes.NoDefaults = nodefaults
+	ec.entityTypes[name].FieldIndexes.Defaults = defaults
+	ec.entityTypes[name].FieldIndexes.JSON = jsons
 }
 
 func (ec *EntityController) Empty(name string) Entity {

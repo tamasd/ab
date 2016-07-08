@@ -104,7 +104,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		ab.MaybeFail(r, http.StatusBadRequest, p.controller.Validate(postData.GetEntity()))
 		ab.MaybeFail(r, http.StatusBadRequest, postData.ValidatePassword())
 
-		db := ab.GetTransaction(r)
+		db := ab.GetDB(r)
 
 		err := p.controller.Insert(db, postData.GetEntity())
 		ab.MaybeFail(r, http.StatusBadRequest, ab.ConvertDBError(err, p.delegate.GetDBErrorConverter()))
@@ -128,7 +128,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
 
 		ab.Render(r).SetCode(http.StatusCreated)
-	}), NotLoggedInMiddleware(user))
+	}), NotLoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Get("/api/auth/"+name+"/verifyemail", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uuid := r.URL.Query().Get("uuid")
@@ -138,7 +138,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 			ab.Fail(r, http.StatusBadRequest, errors.New("uuid or code is missing"))
 		}
 
-		db := ab.GetTransaction(r)
+		db := ab.GetDB(r)
 
 		authData, err := getAuthData(db, uuid, p.GetName())
 		ab.MaybeFail(r, http.StatusBadRequest, err)
@@ -158,7 +158,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		user.LoginUser(r, uuid)
 
 		http.Redirect(w, r, ab.RedirectDestination(r), http.StatusTemporaryRedirect)
-	}), ab.CSRFGetMiddleware("token"), NotLoggedInMiddleware(user))
+	}), ab.CSRFGetMiddleware("token"), NotLoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Post("/api/auth/"+name+"/login", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
@@ -198,7 +198,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 			sess["2fa_user"] = uuid
 			ab.Render(r).SetCode(http.StatusAccepted)
 		}
-	}), NotLoggedInMiddleware(user))
+	}), NotLoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Get("/api/auth/"+name+"/has2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		db := ab.GetDB(r)
@@ -239,7 +239,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		} else {
 			ab.Fail(r, http.StatusForbidden, nil)
 		}
-	}), NotLoggedInMiddleware(user))
+	}), NotLoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Get("/api/auth/"+name+"/add2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
@@ -302,7 +302,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 
 		if valid {
 			currentUser := user.CurrentUser(r)
-			db := ab.GetTransaction(r)
+			db := ab.GetDB(r)
 
 			u, err := p.delegate.LoadUser(currentUser)
 			ab.MaybeFail(r, http.StatusInternalServerError, err)
@@ -315,13 +315,13 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		} else {
 			ab.Fail(r, http.StatusForbidden, nil)
 		}
-	}), LoggedInMiddleware(user))
+	}), LoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Post("/api/auth/"+name+"/disable2fa", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d := remove2faData{}
 		ab.MustDecode(r, &d)
 
-		db := ab.GetTransaction(r)
+		db := ab.GetDB(r)
 		uid := user.CurrentUser(r)
 
 		authData, err := getAuthData(db, uid, p.GetName())
@@ -340,11 +340,11 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 
 		err = updateAuthData(db, uid, p.GetName(), authData, p.delegate.GetAuthID(u))
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
-	}), LoggedInMiddleware(user))
+	}), LoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Post("/api/auth/"+name+"/changepassword", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := ab.GetSession(r)
-		db := ab.GetTransaction(r)
+		db := ab.GetDB(r)
 		uid := user.CurrentUser(r)
 		otlcode := sess["otlcode"]
 		delete(sess, "otlcode")
@@ -389,7 +389,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 
 		err = updateAuthData(db, uid, p.GetName(), authData, p.delegate.GetAuthID(u))
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
-	}), LoggedInMiddleware(user))
+	}), LoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Post("/api/auth/"+name+"/lostpassword", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d := lostPasswordData{}
@@ -412,7 +412,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 
 		err = p.emailDelegate.SendLostPasswordLink(d.Email, "/api/auth/"+name+"/onetimelogin?code="+t+"&uuid="+user.GetID())
 		ab.MaybeFail(r, http.StatusInternalServerError, err)
-	}), NotLoggedInMiddleware(user))
+	}), NotLoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Get("/api/auth/"+name+"/onetimelogin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")

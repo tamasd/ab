@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/lib/pq"
-	"github.com/nbio/httpcontext"
 )
 
 const dbConnectionKey = "abdb"
@@ -37,29 +36,7 @@ type DB interface {
 
 // Gets the DB from the request context.
 func GetDB(r *http.Request) DB {
-	return httpcontext.Get(r, dbConnectionKey).(DB)
-}
-
-// Retrieves or creates a transaction from the request context.
-//
-// This function does not support nested transactions. The user of this function does not need to commit or roll back the transaction, it will happen automatically.
-func GetTransaction(r *http.Request) DB {
-	db := GetDB(r)
-	if tx, ok := db.(*sql.Tx); ok {
-		return tx
-	}
-
-	dbconn := db.(*sql.DB)
-
-	tx, err := dbconn.Begin()
-	if err != nil {
-		LogVerbose(r).Println(err)
-		return nil
-	}
-
-	httpcontext.Set(r, dbConnectionKey, tx)
-
-	return tx
+	return r.Context().Value(dbConnectionKey).(DB)
 }
 
 func connectToDB(connectString string) (*sql.DB, error) {
@@ -106,23 +83,31 @@ func DBMiddleware(connectString string, maxIdleConnections, maxOpenConnections i
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			httpcontext.Set(r, dbConnectionKey, conn)
-
-			defer func() {
-				// If something bad happened, let's roll back the transaction
-				if dbtx, ok := GetDB(r).(*sql.Tx); ok {
-					dbtx.Rollback()
-				}
-			}()
+			r = SetContext(r, dbConnectionKey, conn)
 
 			next.ServeHTTP(w, r)
-
-			// Check if there's a transaction, and commit it
-			if dbtx, ok := GetDB(r).(*sql.Tx); ok {
-				dbtx.Commit()
-			}
 		})
 	}, conn
+}
+
+func TransactionMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		db := GetDB(r)
+		var tx *sql.Tx
+		var err error
+		if dbconn, ok := db.(*sql.DB); ok {
+			tx, err = dbconn.Begin()
+			MaybeFail(r, http.StatusInternalServerError, err)
+			defer tx.Rollback()
+			r = SetContext(r, dbConnectionKey, tx)
+		}
+
+		next.ServeHTTP(w, r)
+
+		if tx != nil {
+			tx.Commit()
+		}
+	})
 }
 
 // Checks if a table exists in the database.

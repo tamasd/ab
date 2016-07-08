@@ -105,6 +105,9 @@ func NewResourceController(delegate ResourceControllerDelegate) *ResourceControl
 	return &ResourceController{
 		ResourceFormatter: &DefaultResourceFormatter{},
 		delegate:          delegate,
+		postMiddlewares:   []func(http.Handler) http.Handler{TransactionMiddleware},
+		putMiddlewares:    []func(http.Handler) http.Handler{TransactionMiddleware},
+		deleteMiddlewares: []func(http.Handler) http.Handler{TransactionMiddleware},
 		errorConverter: func(err *pq.Error) VerboseError {
 			return NewVerboseError(err.Message, err.Detail)
 		},

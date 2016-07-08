@@ -78,7 +78,7 @@ func (p *OAuth2Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 			ab.Fail(r, http.StatusInternalServerError, err)
 		}
 
-		db := ab.GetTransaction(r)
+		db := ab.GetDB(r)
 
 		if user.IsLoggedIn(r) {
 			// User is already logged in. This scenario is likely to happen
@@ -108,7 +108,7 @@ func (p *OAuth2Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 		}
 
 		http.Redirect(w, r, ab.RedirectDestination(r), http.StatusSeeOther)
-	}), ab.CSRFGetMiddleware("state"))
+	}), ab.CSRFGetMiddleware("state"), ab.TransactionMiddleware)
 }
 
 func GetOAuth2Client(db ab.DB, logger *log.Log, provider OAuth2ProviderDelegate, uid string) *http.Client {
