@@ -25,8 +25,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/nbio/httpcontext"
 )
 
 const (
@@ -40,8 +38,7 @@ var SignatureVerificationFailedError = errors.New("signature verification failed
 
 // Extracts the session from the http request struct.
 func GetSession(r *http.Request) Session {
-	s := httpcontext.Get(r, session_context_key)
-	return s.(Session)
+	return r.Context().Value(session_context_key).(Session)
 }
 
 // Creates a session middleware.
@@ -61,7 +58,7 @@ func SessionMiddleware(prefix string, key SecretKey, cookieURL *url.URL, expires
 
 			LogTrace(r).Println(sess)
 
-			httpcontext.Set(r, session_context_key, sess)
+			r = SetContext(r, session_context_key, sess)
 
 			srw := &sessionResponseWriter{
 				key:          key,

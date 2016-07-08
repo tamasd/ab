@@ -28,7 +28,6 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/julienschmidt/httprouter"
-	"github.com/nbio/httpcontext"
 	"github.com/spf13/viper"
 	"github.com/tamasd/ab/lib/log"
 	"github.com/tamasd/ab/util"
@@ -262,7 +261,7 @@ func wrapHandler(handler http.Handler, middlewares ...func(http.Handler) http.Ha
 func (s *Server) Handle(method, path string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) {
 	handler = wrapHandler(handler, middlewares...)
 	s.Router.Handle(method, path, httprouter.Handle(func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		httpcontext.Set(r, paramKey, p)
+		r = SetContext(r, paramKey, p)
 		handler.ServeHTTP(w, r)
 	}))
 }
@@ -324,7 +323,7 @@ func (s *Server) OptionsF(path string, handler http.HandlerFunc, middlewares ...
 }
 
 func GetParams(r *http.Request) httprouter.Params {
-	return httpcontext.Get(r, paramKey).(httprouter.Params)
+	return r.Context().Value(paramKey).(httprouter.Params)
 }
 
 // Returns the server's DB connection if there's any.

@@ -22,7 +22,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/nbio/httpcontext"
 	"github.com/tamasd/ab/util"
 )
 
@@ -208,7 +207,7 @@ func ErrorHandlerMiddleware(eh ErrorHandler, displayErrors bool) func(http.Handl
 				p.ServeHTTP(w, r)
 			}()
 
-			httpcontext.Set(r, errorKey, eh)
+			r = SetContext(r, errorKey, eh)
 
 			next.ServeHTTP(w, r)
 		})
@@ -217,7 +216,7 @@ func ErrorHandlerMiddleware(eh ErrorHandler, displayErrors bool) func(http.Handl
 
 // Returns the Error object from the request context.
 func Error(r *http.Request) ErrorHandler {
-	return httpcontext.Get(r, errorKey).(ErrorHandler)
+	return r.Context().Value(errorKey).(ErrorHandler)
 }
 
 // Calls HandleError on the Error object inside the request context.

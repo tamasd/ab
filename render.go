@@ -23,7 +23,6 @@ import (
 	"net/http"
 
 	"github.com/golang/gddo/httputil"
-	"github.com/nbio/httpcontext"
 )
 
 const renderKey = "abrender"
@@ -41,7 +40,7 @@ var JSONPrefix = true
 func RendererMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		renderer := NewRenderer()
-		httpcontext.Set(r, renderKey, renderer)
+		r = SetContext(r, renderKey, renderer)
 		next.ServeHTTP(&rendererResponseWriter{
 			ResponseWriter: w,
 			Renderer:       renderer,
@@ -52,7 +51,7 @@ func RendererMiddleware(next http.Handler) http.Handler {
 
 // Gets the Renderer struct from the request context.
 func Render(r *http.Request) *Renderer {
-	return httpcontext.Get(r, renderKey).(*Renderer)
+	return r.Context().Value(renderKey).(*Renderer)
 }
 
 // A per-request struct for the Render API.

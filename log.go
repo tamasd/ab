@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/nbio/httpcontext"
 	"github.com/tamasd/ab/lib/log"
 )
 
@@ -49,8 +48,8 @@ func LoggerMiddleware(level log.LogLevel, userLogFactory, verboseLogFactory, tra
 			)
 			l.Level = level
 
-			httpcontext.Set(r, logKey, l)
-			httpcontext.Set(r, logBufKey, buf)
+			r = SetContext(r, logKey, l)
+			r = SetContext(r, logBufKey, buf)
 
 			next.ServeHTTP(w, r)
 		})
@@ -58,11 +57,11 @@ func LoggerMiddleware(level log.LogLevel, userLogFactory, verboseLogFactory, tra
 }
 
 func RequestLogs(r *http.Request) string {
-	return httpcontext.Get(r, logBufKey).(*bytes.Buffer).String()
+	return r.Context().Value(logBufKey).(*bytes.Buffer).String()
 }
 
 func logFromContext(r *http.Request) *log.Log {
-	return httpcontext.Get(r, logKey).(*log.Log)
+	return r.Context().Value(logKey).(*log.Log)
 }
 
 func LogUser(r *http.Request) log.Logger {
