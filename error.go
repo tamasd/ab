@@ -25,8 +25,6 @@ import (
 	"github.com/tamasd/ab/util"
 )
 
-const errorKey = "aberror"
-
 // Color codes for HTML error pages
 var (
 	OtherForegroundColor   = "fdf6e3"
@@ -36,11 +34,6 @@ var (
 	WarningBackgroundColor = "b58900"
 	ErrorBackgroundColor   = "dc322f"
 )
-
-type ErrorHandler interface {
-	// Error handler method. This must panic with Panic, and the ErrorHandlerMiddleware will recover it.
-	HandleError(int, error)
-}
 
 type VerboseError interface {
 	// Error that is displayed in the logs and debug messages. Should contain diagnostical information.
@@ -177,7 +170,7 @@ func decideColor(code int, other, warn, err string) string {
 // The caller of the function should also supply a logger that will log the errors. The displayErrors sends the error messages to the user. This is useful in a development environment.
 //
 // This middleware is automatically added to the Server with PetBunny.
-func ErrorHandlerMiddleware(eh ErrorHandler, displayErrors bool) func(http.Handler) http.Handler {
+func ErrorHandlerMiddleware(displayErrors bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
@@ -207,25 +200,21 @@ func ErrorHandlerMiddleware(eh ErrorHandler, displayErrors bool) func(http.Handl
 				p.ServeHTTP(w, r)
 			}()
 
-			r = SetContext(r, errorKey, eh)
-
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
-// Returns the Error object from the request context.
-func Error(r *http.Request) ErrorHandler {
-	return r.Context().Value(errorKey).(ErrorHandler)
-}
-
 // Calls HandleError on the Error object inside the request context.
-func Fail(r *http.Request, code int, err error) {
-	Error(r).HandleError(code, err)
+func Fail(code int, err error) {
+	panic(Panic{
+		Code: code,
+		Err:  err,
+	})
 }
 
 // Calls Fail() if err is not nil and not any of excludedErrors.
-func MaybeFail(r *http.Request, code int, err error, excludedErrors ...error) {
+func MaybeFail(code int, err error, excludedErrors ...error) {
 	if err == nil {
 		return
 	}
@@ -236,22 +225,7 @@ func MaybeFail(r *http.Request, code int, err error, excludedErrors ...error) {
 		}
 	}
 
-	Fail(r, code, err)
-}
-
-// Generic error handler function type.
-type ErrorHandlerFunc func(int, error)
-
-func (ehf ErrorHandlerFunc) HandleError(code int, err error) {
-	ehf(code, err)
-}
-
-// Standard error handler function.
-func HandleError(code int, err error) {
-	panic(Panic{
-		Code: code,
-		Err:  err,
-	})
+	Fail(code, err)
 }
 
 // Data for the ErrorPage template.

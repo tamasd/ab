@@ -189,7 +189,7 @@ func (res *ResourceController) listHandler(w http.ResponseWriter, r *http.Reques
 	res.listEvents.invokeBefore(r)
 
 	list, err := res.listDelegate.List(r, start, limit)
-	MaybeFail(r, http.StatusInternalServerError, res.convertError(err))
+	MaybeFail(http.StatusInternalServerError, res.convertError(err))
 
 	res.listEvents.invokeAfter(r, &list)
 
@@ -206,13 +206,13 @@ func (res *ResourceController) postHandler(w http.ResponseWriter, r *http.Reques
 
 	if v, ok := d.(Validator); ok {
 		err := v.Validate()
-		MaybeFail(r, http.StatusBadRequest, err)
+		MaybeFail(http.StatusBadRequest, err)
 	}
 
 	res.postEvents.invokeInside(r, d)
 
 	err := res.postDelegate.Insert(d, r)
-	MaybeFail(r, http.StatusInternalServerError, res.convertError(err))
+	MaybeFail(http.StatusInternalServerError, res.convertError(err))
 
 	res.postEvents.invokeAfter(r, d)
 
@@ -225,9 +225,9 @@ func (res *ResourceController) getHandler(w http.ResponseWriter, r *http.Request
 	res.getEvents.invokeBefore(r, nil)
 
 	d, err := res.getDelegate.Load(id, r)
-	MaybeFail(r, http.StatusInternalServerError, res.convertError(err))
+	MaybeFail(http.StatusInternalServerError, res.convertError(err))
 	if d == nil {
-		Fail(r, http.StatusNotFound, nil)
+		Fail(http.StatusNotFound, nil)
 	}
 
 	res.getEvents.invokeAfter(r, d)
@@ -244,20 +244,20 @@ func (res *ResourceController) putHandler(w http.ResponseWriter, r *http.Request
 	res.putEvents.invokeBefore(r, d)
 
 	if res.putDelegate.GetID(d) != id {
-		Fail(r, http.StatusBadRequest, nil)
+		Fail(http.StatusBadRequest, nil)
 	}
 
 	res.putDelegate.Validate(d, r)
 
 	if v, ok := d.(Validator); ok {
 		err := v.Validate()
-		MaybeFail(r, http.StatusBadRequest, err)
+		MaybeFail(http.StatusBadRequest, err)
 	}
 
 	res.putEvents.invokeInside(r, d)
 
 	err := res.putDelegate.Update(d, r)
-	MaybeFail(r, http.StatusInternalServerError, res.convertError(err))
+	MaybeFail(http.StatusInternalServerError, res.convertError(err))
 
 	res.putEvents.invokeAfter(r, d)
 
@@ -270,15 +270,15 @@ func (res *ResourceController) deleteHandler(w http.ResponseWriter, r *http.Requ
 	res.deleteEvents.invokeBefore(r, nil)
 
 	d, err := res.deleteDelegate.Load(id, r)
-	MaybeFail(r, http.StatusInternalServerError, res.convertError(err))
+	MaybeFail(http.StatusInternalServerError, res.convertError(err))
 	if d == nil {
-		Fail(r, http.StatusNotFound, nil)
+		Fail(http.StatusNotFound, nil)
 	}
 
 	res.deleteEvents.invokeInside(r, d)
 
 	err = res.deleteDelegate.Delete(d, r)
-	MaybeFail(r, http.StatusInternalServerError, res.convertError(err))
+	MaybeFail(http.StatusInternalServerError, res.convertError(err))
 
 	res.deleteEvents.invokeAfter(r, d)
 }

@@ -47,7 +47,7 @@ func (p *OAuth1Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 	srv.Get("/api/auth/"+name+"/connect", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tmpCred, err := c.RequestTemporaryCredentials(nil, callback+"?token="+r.URL.Query().Get("token"), nil)
 		if err != nil {
-			ab.Fail(r, http.StatusInternalServerError, nil)
+			ab.Fail(http.StatusInternalServerError, nil)
 		}
 		s := ab.GetSession(r)
 		s["oauth_"+name+"_tmpcred"] = util.EncryptString(tmpCred.Token + ":" + tmpCred.Secret)
@@ -60,11 +60,11 @@ func (p *OAuth1Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 		s := ab.GetSession(r)
 		tmpCredEncoded := util.DecryptString(s["oauth_"+name+"_tmpcred"])
 		if tmpCredEncoded == "" {
-			ab.Fail(r, http.StatusBadRequest, nil)
+			ab.Fail(http.StatusBadRequest, nil)
 		}
 		tmpCredParts := strings.Split(tmpCredEncoded, ":")
 		if len(tmpCredParts) != 2 {
-			ab.Fail(r, http.StatusBadRequest, nil)
+			ab.Fail(http.StatusBadRequest, nil)
 		}
 		delete(s, "oauth_"+name+"_tmpcred")
 		tmpCred := &oauth.Credentials{
@@ -72,21 +72,21 @@ func (p *OAuth1Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 			Secret: tmpCredParts[1],
 		}
 		if tmpCred.Token != r.URL.Query().Get("oauth_token") {
-			ab.Fail(r, http.StatusBadRequest, nil)
+			ab.Fail(http.StatusBadRequest, nil)
 		}
 		tokenCred, _, err := c.RequestToken(nil, tmpCred, r.URL.Query().Get("oauth_verifier"))
 		if err != nil {
-			ab.Fail(r, http.StatusBadRequest, err)
+			ab.Fail(http.StatusBadRequest, err)
 		}
 
 		oauthuser, authid, err := p.delegate.PrepareUser(tokenCred)
 		if err != nil {
-			ab.Fail(r, http.StatusInternalServerError, err)
+			ab.Fail(http.StatusInternalServerError, err)
 		}
 
 		jsontokens, err := json.Marshal(tokenCred)
 		if err != nil {
-			ab.Fail(r, http.StatusInternalServerError, err)
+			ab.Fail(http.StatusInternalServerError, err)
 		}
 
 		db := ab.GetDB(r)
@@ -98,11 +98,11 @@ func (p *OAuth1Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 			id, _ := AuthenticateUser(db, name, authid)
 			if id == "" {
 				if err := p.controller.Insert(db, oauthuser); err != nil {
-					ab.Fail(r, http.StatusInternalServerError, err)
+					ab.Fail(http.StatusInternalServerError, err)
 				}
 				id = oauthuser.GetID()
 				if err := AddAuthToUser(db, id, authid, string(jsontokens), name); err != nil {
-					ab.Fail(r, http.StatusInternalServerError, err)
+					ab.Fail(http.StatusInternalServerError, err)
 				}
 			}
 

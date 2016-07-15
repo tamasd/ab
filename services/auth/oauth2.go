@@ -55,27 +55,27 @@ func (p *OAuth2Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 	srv.Get("/api/auth/"+name+"/callback", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
 		if code == "" {
-			ab.Fail(r, http.StatusBadRequest, errors.New("empty code from "+name))
+			ab.Fail(http.StatusBadRequest, errors.New("empty code from "+name))
 		}
 
 		token, err := c.Exchange(oauth2.NoContext, code)
 		if err != nil {
-			ab.Fail(r, http.StatusInternalServerError, err)
+			ab.Fail(http.StatusInternalServerError, err)
 		}
 
 		client := c.Client(oauth2.NoContext, token)
 
 		oauthuser, authid, err := p.delegate.PrepareUser(client, token)
 		if err != nil {
-			ab.Fail(r, http.StatusInternalServerError, ab.WrapError(err, "Failed to retrieve the required data from the provider. Check your privacy settings."))
+			ab.Fail(http.StatusInternalServerError, ab.WrapError(err, "Failed to retrieve the required data from the provider. Check your privacy settings."))
 		}
 		if authid == "" {
-			ab.Fail(r, http.StatusInternalServerError, ab.WrapError(nil, "Failed to retrieve the required data from the provider. Check your privacy settings."))
+			ab.Fail(http.StatusInternalServerError, ab.WrapError(nil, "Failed to retrieve the required data from the provider. Check your privacy settings."))
 		}
 
 		jsontokens, err := json.Marshal(token)
 		if err != nil {
-			ab.Fail(r, http.StatusInternalServerError, err)
+			ab.Fail(http.StatusInternalServerError, err)
 		}
 
 		db := ab.GetDB(r)
@@ -85,7 +85,7 @@ func (p *OAuth2Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 			// when the user intends to add a new service.
 			ab.LogTrace(r).Println("user is already logged in, adding new service")
 			id := user.CurrentUser(r)
-			ab.MaybeFail(r, http.StatusInternalServerError, AddAuthToUser(db, id, authid, string(jsontokens), name))
+			ab.MaybeFail(http.StatusInternalServerError, AddAuthToUser(db, id, authid, string(jsontokens), name))
 		} else {
 			// User is not logged in.
 			// First let's try to authenticate, assuming that the user exists.
@@ -95,11 +95,11 @@ func (p *OAuth2Provider) Register(baseURL string, srv *ab.Server, user UserDeleg
 			if id == "" {
 				ab.LogTrace(r).Println("user not found, creating new user")
 				if err := p.controller.Insert(db, oauthuser); err != nil {
-					ab.Fail(r, http.StatusInternalServerError, err)
+					ab.Fail(http.StatusInternalServerError, err)
 				}
 				id = oauthuser.GetID()
 				if err := AddAuthToUser(db, id, authid, string(jsontokens), name); err != nil {
-					ab.Fail(r, http.StatusInternalServerError, err)
+					ab.Fail(http.StatusInternalServerError, err)
 				}
 			}
 

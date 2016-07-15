@@ -231,7 +231,7 @@ func (s *SearchService) Register(srv *ab.Server) error {
 		ab.MustDecode(r, &d)
 
 		results, err := s.Search(d.Search, d.Owners)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		ab.Render(r).JSON(results)
 	}))

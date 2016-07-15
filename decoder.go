@@ -77,9 +77,9 @@ func Decode(r *http.Request, v interface{}) error {
 func MustDecode(r *http.Request, v interface{}) {
 	err := Decode(r, v)
 	if err == NoDecoderErr {
-		Fail(r, http.StatusUnsupportedMediaType, err)
+		Fail(http.StatusUnsupportedMediaType, err)
 	}
 	if err != nil {
-		Fail(r, http.StatusBadRequest, err)
+		Fail(http.StatusBadRequest, err)
 	}
 }

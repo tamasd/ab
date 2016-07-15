@@ -98,23 +98,23 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		ab.MustDecode(r, postData)
 
 		if postData.GetID() != "" {
-			ab.Fail(r, http.StatusBadRequest, ab.NewVerboseError("", "id was provided for user"))
+			ab.Fail(http.StatusBadRequest, ab.NewVerboseError("", "id was provided for user"))
 		}
 
-		ab.MaybeFail(r, http.StatusBadRequest, p.controller.Validate(postData.GetEntity()))
-		ab.MaybeFail(r, http.StatusBadRequest, postData.ValidatePassword())
+		ab.MaybeFail(http.StatusBadRequest, p.controller.Validate(postData.GetEntity()))
+		ab.MaybeFail(http.StatusBadRequest, postData.ValidatePassword())
 
 		db := ab.GetDB(r)
 
 		err := p.controller.Insert(db, postData.GetEntity())
-		ab.MaybeFail(r, http.StatusBadRequest, ab.ConvertDBError(err, p.delegate.GetDBErrorConverter()))
+		ab.MaybeFail(http.StatusBadRequest, ab.ConvertDBError(err, p.delegate.GetDBErrorConverter()))
 
 		hash, err := defaultHashPassword(postData.GetPassword())
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		emailTokenBuf := make([]byte, 32)
 		_, err = io.ReadFull(rand.Reader, emailTokenBuf)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 		emailToken := hex.EncodeToString(emailTokenBuf)
 
 		authData, _ := json.Marshal(passwordAuthData{
@@ -122,10 +122,10 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 			EmailVerificationToken: emailToken,
 		})
 		err = AddAuthToUser(db, postData.GetID(), p.delegate.GetAuthID(postData), string(authData), name)
-		ab.MaybeFail(r, http.StatusInternalServerError, ab.ConvertDBError(err, p.delegate.GetDBErrorConverter()))
+		ab.MaybeFail(http.StatusInternalServerError, ab.ConvertDBError(err, p.delegate.GetDBErrorConverter()))
 
 		err = p.emailDelegate.SendRegistrationEmail(p.delegate.GetEmail(postData), "/api/auth/"+name+"/verifyemail?token="+ab.GetCSRFToken(r)+"&code="+emailToken+"&uuid="+postData.GetID())
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		ab.Render(r).SetCode(http.StatusCreated)
 	}), NotLoggedInMiddleware(user), ab.TransactionMiddleware)
@@ -135,25 +135,25 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		code := r.URL.Query().Get("code")
 
 		if code == "" || uuid == "" {
-			ab.Fail(r, http.StatusBadRequest, errors.New("uuid or code is missing"))
+			ab.Fail(http.StatusBadRequest, errors.New("uuid or code is missing"))
 		}
 
 		db := ab.GetDB(r)
 
 		authData, err := getAuthData(db, uuid, p.GetName())
-		ab.MaybeFail(r, http.StatusBadRequest, err)
+		ab.MaybeFail(http.StatusBadRequest, err)
 
 		if authData.EmailVerificationToken == "" || authData.EmailVerificationToken != code {
-			ab.Fail(r, http.StatusForbidden, nil)
+			ab.Fail(http.StatusForbidden, nil)
 		}
 
 		authData.EmailVerificationToken = ""
 
 		u, err := p.delegate.LoadUser(uuid)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		err = updateAuthData(db, uuid, p.GetName(), authData, p.delegate.GetAuthID(u))
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		user.LoginUser(r, uuid)
 
@@ -171,25 +171,25 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		var secret string
 		if err := db.QueryRow("SELECT uuid, secret FROM auth a WHERE a.provider = $1 AND a.authid = $2", p.GetName(), ld.Identifier).Scan(&uuid, &secret); err != nil {
 			if err == sql.ErrNoRows {
-				ab.Fail(r, http.StatusNotFound, errors.New("invalid username or password"))
+				ab.Fail(http.StatusNotFound, errors.New("invalid username or password"))
 			} else {
-				ab.Fail(r, http.StatusInternalServerError, ab.ConvertDBError(err, p.delegate.GetDBErrorConverter()))
+				ab.Fail(http.StatusInternalServerError, ab.ConvertDBError(err, p.delegate.GetDBErrorConverter()))
 			}
 		}
 
 		authData := passwordAuthData{}
 		if err := json.Unmarshal([]byte(util.DecryptString(secret)), &authData); err != nil {
-			ab.Fail(r, http.StatusInternalServerError, err)
+			ab.Fail(http.StatusInternalServerError, err)
 		}
 
 		if authData.EmailVerificationToken != "" {
-			ab.Fail(r, http.StatusForbidden, errors.New("email is not verified"))
+			ab.Fail(http.StatusForbidden, errors.New("email is not verified"))
 		}
 
 		ok, err := verifyPassword(ld.Password, authData.PasswordHash)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 		if !ok {
-			ab.Fail(r, http.StatusForbidden, errors.New("invalid password"))
+			ab.Fail(http.StatusForbidden, errors.New("invalid password"))
 		}
 
 		if authData.TwoFAToken == "" {
@@ -206,7 +206,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 
 		authData, err := getAuthData(db, uid, p.GetName())
 		if err != nil && err != sql.ErrNoRows {
-			ab.Fail(r, http.StatusInternalServerError, err)
+			ab.Fail(http.StatusInternalServerError, err)
 		}
 
 		ab.Render(r).JSON(map[string]bool{
@@ -218,7 +218,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		sess := ab.GetSession(r)
 		tmpUser := sess["2fa_user"]
 		if tmpUser == "" {
-			ab.Fail(r, http.StatusBadRequest, nil)
+			ab.Fail(http.StatusBadRequest, nil)
 		}
 
 		delete(sess, "2fa_user")
@@ -229,15 +229,15 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		db := ab.GetDB(r)
 
 		authData, err := getAuthData(db, tmpUser, p.GetName())
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		valid, err := otpAuth(authData.TwoFAToken, d.Token)
-		ab.MaybeFail(r, http.StatusBadRequest, err)
+		ab.MaybeFail(http.StatusBadRequest, err)
 
 		if valid {
 			user.LoginUser(r, tmpUser)
 		} else {
-			ab.Fail(r, http.StatusForbidden, nil)
+			ab.Fail(http.StatusForbidden, nil)
 		}
 	}), NotLoggedInMiddleware(user), ab.TransactionMiddleware)
 
@@ -250,7 +250,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		} else {
 			sec := make([]byte, 20)
 			_, err := io.ReadFull(rand.Reader, sec)
-			ab.MaybeFail(r, http.StatusInternalServerError, err)
+			ab.MaybeFail(http.StatusInternalServerError, err)
 
 			secret = base32.StdEncoding.EncodeToString(sec)
 		}
@@ -261,19 +261,19 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 			"&issuer=" + url.QueryEscape(issuer)
 
 		code, err := qr.Encode(auth_string, qr.H, qr.Unicode)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		if size, err := strconv.Atoi(r.URL.Query().Get("size")); err == nil {
 			if size >= 100 && size <= 500 {
 				code, err = barcode.Scale(code, size, size)
-				ab.MaybeFail(r, http.StatusInternalServerError, err)
+				ab.MaybeFail(http.StatusInternalServerError, err)
 			}
 		}
 
 		sess["2fa_secret"] = util.EncryptString(secret)
 
 		buf := bytes.NewBuffer(nil)
-		ab.MaybeFail(r, http.StatusInternalServerError, png.Encode(buf, code))
+		ab.MaybeFail(http.StatusInternalServerError, png.Encode(buf, code))
 		img := buf.Bytes()
 
 		ab.Render(r).AddOffer("image/png", func(w http.ResponseWriter) {
@@ -289,7 +289,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		secret := util.DecryptString(sess["2fa_secret"])
 
 		if secret == "" {
-			ab.Fail(r, http.StatusForbidden, nil)
+			ab.Fail(http.StatusForbidden, nil)
 		}
 
 		delete(sess, "2fa_secret")
@@ -298,22 +298,22 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		ab.MustDecode(r, &d)
 
 		valid, err := otpAuth(secret, d.Token)
-		ab.MaybeFail(r, http.StatusBadRequest, err)
+		ab.MaybeFail(http.StatusBadRequest, err)
 
 		if valid {
 			currentUser := user.CurrentUser(r)
 			db := ab.GetDB(r)
 
 			u, err := p.delegate.LoadUser(currentUser)
-			ab.MaybeFail(r, http.StatusInternalServerError, err)
+			ab.MaybeFail(http.StatusInternalServerError, err)
 
 			authData, err := getAuthData(db, currentUser, p.GetName())
-			ab.MaybeFail(r, http.StatusBadRequest, err)
+			ab.MaybeFail(http.StatusBadRequest, err)
 			authData.TwoFAToken = secret
 			err = updateAuthData(db, currentUser, p.GetName(), authData, p.delegate.GetAuthID(u))
-			ab.MaybeFail(r, http.StatusInternalServerError, err)
+			ab.MaybeFail(http.StatusInternalServerError, err)
 		} else {
-			ab.Fail(r, http.StatusForbidden, nil)
+			ab.Fail(http.StatusForbidden, nil)
 		}
 	}), LoggedInMiddleware(user), ab.TransactionMiddleware)
 
@@ -325,21 +325,21 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		uid := user.CurrentUser(r)
 
 		authData, err := getAuthData(db, uid, p.GetName())
-		ab.MaybeFail(r, http.StatusBadRequest, err)
+		ab.MaybeFail(http.StatusBadRequest, err)
 
 		ok, err := verifyPassword(d.Password, authData.PasswordHash)
 		if err != nil || !ok {
-			ab.Fail(r, http.StatusForbidden, err)
+			ab.Fail(http.StatusForbidden, err)
 		}
 
 		authData.TwoFAToken = ""
 
 		currentUser := user.CurrentUser(r)
 		u, err := p.delegate.LoadUser(currentUser)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		err = updateAuthData(db, uid, p.GetName(), authData, p.delegate.GetAuthID(u))
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 	}), LoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Post("/api/auth/"+name+"/changepassword", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -352,7 +352,7 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		pwchg := PasswordChangeFields{}
 		ab.MustDecode(r, &pwchg)
 
-		ab.MaybeFail(r, http.StatusBadRequest, pwchg.ValidatePassword())
+		ab.MaybeFail(http.StatusBadRequest, pwchg.ValidatePassword())
 
 		hasPassword := true
 		authData, err := getAuthData(db, uid, p.GetName())
@@ -360,35 +360,35 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 			if err == sql.ErrNoRows {
 				hasPassword = false
 			} else {
-				ab.Fail(r, http.StatusBadRequest, err)
+				ab.Fail(http.StatusBadRequest, err)
 			}
 		}
 
 		if hasPassword {
 			if otlcode == "" {
 				ok, err := verifyPassword(pwchg.GetOldPassword(), authData.PasswordHash)
-				ab.MaybeFail(r, http.StatusInternalServerError, err)
+				ab.MaybeFail(http.StatusInternalServerError, err)
 				if !ok {
-					ab.Fail(r, http.StatusBadRequest, nil)
+					ab.Fail(http.StatusBadRequest, nil)
 				}
 			} else {
 				ok, err := ConsumeToken(db, uid, "otlcode", otlcode)
-				ab.MaybeFail(r, http.StatusInternalServerError, err)
+				ab.MaybeFail(http.StatusInternalServerError, err)
 				if !ok {
-					ab.Fail(r, http.StatusBadRequest, nil)
+					ab.Fail(http.StatusBadRequest, nil)
 				}
 			}
 		}
 
 		authData.PasswordHash, err = defaultHashPassword(pwchg.GetPassword())
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		currentUser := user.CurrentUser(r)
 		u, err := p.delegate.LoadUser(currentUser)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		err = updateAuthData(db, uid, p.GetName(), authData, p.delegate.GetAuthID(u))
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 	}), LoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Post("/api/auth/"+name+"/lostpassword", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -396,42 +396,42 @@ func (p *PasswordAuthProvider) Register(baseURL string, srv *ab.Server, user Use
 		ab.MustDecode(r, &d)
 
 		user, err := p.delegate.LoadUserByMail(d.Email)
-		ab.MaybeFail(r, http.StatusBadRequest, err)
+		ab.MaybeFail(http.StatusBadRequest, err)
 		if user == nil {
-			ab.Fail(r, http.StatusNotFound, errors.New("user not found"))
+			ab.Fail(http.StatusNotFound, errors.New("user not found"))
 		}
 		if user.GetID() == "" {
-			ab.Fail(r, http.StatusNotFound, errors.New("user not found"))
+			ab.Fail(http.StatusNotFound, errors.New("user not found"))
 		}
 
 		db := ab.GetDB(r)
 
 		exp := time.Now().Add(24 * time.Hour)
 		t, err := CreateToken(db, user.GetID(), "lostpassword", &exp, true)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		err = p.emailDelegate.SendLostPasswordLink(d.Email, "/api/auth/"+name+"/onetimelogin?code="+t+"&uuid="+user.GetID())
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 	}), NotLoggedInMiddleware(user), ab.TransactionMiddleware)
 
 	srv.Get("/api/auth/"+name+"/onetimelogin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
 		uuid := r.URL.Query().Get("uuid")
 		if code == "" || uuid == "" {
-			ab.Fail(r, http.StatusNotFound, nil)
+			ab.Fail(http.StatusNotFound, nil)
 		}
 
 		db := ab.GetDB(r)
 
 		ok, err := ConsumeToken(db, uuid, "lostpassword", code)
-		ab.MaybeFail(r, http.StatusNotFound, err)
+		ab.MaybeFail(http.StatusNotFound, err)
 		if !ok {
-			ab.Fail(r, http.StatusNotFound, nil)
+			ab.Fail(http.StatusNotFound, nil)
 		}
 
 		exp := time.Now().Add(time.Hour)
 		otlcode, err := CreateToken(db, uuid, "otlcode", &exp, false)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 
 		sess := ab.GetSession(r)
 		sess["otlcode"] = otlcode

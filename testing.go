@@ -82,7 +82,7 @@ func (s *TestServer) Start(setup func(cfg *viper.Viper, s *Server) error) *viper
 	cfg.Set("CookieSecret", genSecret())
 	cfg.Set("assetsDir", s.AssetsDir)
 
-	srv, err := PetBunny(cfg, log.DefaultLogger(ioutil.Discard), nil)
+	srv, err := PetBunny(cfg, log.DefaultLogger(ioutil.Discard))
 	if err != nil {
 		panic(err)
 	}

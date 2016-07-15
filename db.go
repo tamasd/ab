@@ -97,7 +97,7 @@ func TransactionMiddleware(next http.Handler) http.Handler {
 		var err error
 		if dbconn, ok := db.(*sql.DB); ok {
 			tx, err = dbconn.Begin()
-			MaybeFail(r, http.StatusInternalServerError, err)
+			MaybeFail(http.StatusInternalServerError, err)
 			defer tx.Rollback()
 			r = SetContext(r, dbConnectionKey, tx)
 		}

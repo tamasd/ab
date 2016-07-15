@@ -69,7 +69,7 @@ func Pager(r *http.Request, limit int) int {
 
 	if page := r.URL.Query().Get("page"); page != "" {
 		pagenum, err := strconv.Atoi(page)
-		MaybeFail(r, http.StatusBadRequest, err)
+		MaybeFail(http.StatusBadRequest, err)
 		start = (pagenum - 1) * limit
 	}
 

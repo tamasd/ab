@@ -116,23 +116,23 @@ func (s *Service) Register(srv *ab.Server) error {
 		sess := ab.GetSession(r)
 		uid := sess["uid"] // TODO don't hardcode this
 		if uid == "" {
-			ab.Fail(r, http.StatusForbidden, nil)
+			ab.Fail(http.StatusForbidden, nil)
 		}
 
 		if uid != uuid {
 			// TODO check for admin access when the access control will be ready
-			ab.Fail(r, http.StatusForbidden, nil)
+			ab.Fail(http.StatusForbidden, nil)
 		}
 
 		provs := []string{}
 		rows, err := db.Query("SELECT DISTINCT provider FROM auth WHERE uuid = $1", uuid)
-		ab.MaybeFail(r, http.StatusInternalServerError, err)
+		ab.MaybeFail(http.StatusInternalServerError, err)
 		defer rows.Close()
 
 		for rows.Next() {
 			var provider string
 			if err = rows.Scan(&provider); err != nil {
-				ab.Fail(r, http.StatusInternalServerError, err)
+				ab.Fail(http.StatusInternalServerError, err)
 			}
 
 			provs = append(provs, provider)
@@ -187,7 +187,7 @@ func LoggedInMiddleware(user UserDelegate) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !user.IsLoggedIn(r) {
-				ab.Fail(r, http.StatusForbidden, ab.NewVerboseError("", "user is not logged in"))
+				ab.Fail(http.StatusForbidden, ab.NewVerboseError("", "user is not logged in"))
 			}
 
 			next.ServeHTTP(w, r)
@@ -200,7 +200,7 @@ func NotLoggedInMiddleware(user UserDelegate) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if user.IsLoggedIn(r) {
-				ab.Fail(r, http.StatusForbidden, ab.NewVerboseError("", "user is already logged in"))
+				ab.Fail(http.StatusForbidden, ab.NewVerboseError("", "user is already logged in"))
 			}
 
 			next.ServeHTTP(w, r)

@@ -71,7 +71,7 @@ func Hop(configure func(cfg *viper.Viper, s *Server) error, topMiddlewares ...fu
 		logger.Fatalln(err)
 	}
 
-	s, err := PetBunny(cfg, logger, nil, topMiddlewares...)
+	s, err := PetBunny(cfg, logger, topMiddlewares...)
 
 	if err != nil {
 		logger.Fatalln(err)
@@ -124,7 +124,7 @@ func Hop(configure func(cfg *viper.Viper, s *Server) error, topMiddlewares ...fu
 // - publicDir string: public directory. The value - skips setting it up.
 //
 // - root bool: sets / to serve assetsDir/index.html. Default is true.
-func PetBunny(cfg *viper.Viper, logger *log.Log, eh ErrorHandler, topMiddlewares ...func(http.Handler) http.Handler) (*Server, error) {
+func PetBunny(cfg *viper.Viper, logger *log.Log, topMiddlewares ...func(http.Handler) http.Handler) (*Server, error) {
 	cookieSecret := cfg.GetString("CookieSecret")
 	if cookieSecret == "" {
 		return nil, errors.New("secret key must not be empty")
@@ -168,10 +168,7 @@ func PetBunny(cfg *viper.Viper, logger *log.Log, eh ErrorHandler, topMiddlewares
 		s.Use(gziphandler.GzipHandler)
 	}
 
-	if eh == nil {
-		eh = ErrorHandlerFunc(HandleError)
-	}
-	s.Use(ErrorHandlerMiddleware(eh, s.Logger.Level > log.LOG_USER))
+	s.Use(ErrorHandlerMiddleware(s.Logger.Level > log.LOG_USER))
 
 	s.Use(RendererMiddleware)
 

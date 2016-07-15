@@ -155,7 +155,7 @@ func (er *entityResourceDelegate) Validate(data Resource, r *http.Request) {
 	}
 	e := er.getEntity(data)
 	err := er.controller.Validate(e)
-	MaybeFail(r, http.StatusBadRequest, err)
+	MaybeFail(http.StatusBadRequest, err)
 }
 
 func (er *entityResourceDelegate) Insert(data Resource, r *http.Request) error {

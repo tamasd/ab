@@ -89,7 +89,7 @@ func init() {
 		}))
 
 		s.Get("/fail", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			MaybeFail(r, http.StatusInternalServerError, errors.New("oops"))
+			MaybeFail(http.StatusInternalServerError, errors.New("oops"))
 		}))
 
 		buf1k := make([]byte, 512)
@@ -101,7 +101,7 @@ func init() {
 
 		s.Get("/binary", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			file, err := os.Open("testing/binary.bin")
-			MaybeFail(r, http.StatusInternalServerError, err)
+			MaybeFail(http.StatusInternalServerError, err)
 			Render(r).Binary("application/octet-stream", "binary.bin", file)
 		}))
 
@@ -120,7 +120,7 @@ type testService struct {
 func (s *testService) Register(srv *Server) error {
 	srv.Get("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rows, err := GetDB(r).Query("SELECT * FROM test ORDER BY a")
-		MaybeFail(r, http.StatusInternalServerError, err)
+		MaybeFail(http.StatusInternalServerError, err)
 		ret := []testDecode{}
 		for rows.Next() {
 			d := testDecode{}
@@ -134,7 +134,7 @@ func (s *testService) Register(srv *Server) error {
 	srv.Get("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := GetParams(r).ByName("id")
 		d := testDecode{}
-		MaybeFail(r, http.StatusInternalServerError, GetDB(r).QueryRow("SELECT * FROM test WHERE a = $1", id).Scan(&d.A, &d.B))
+		MaybeFail(http.StatusInternalServerError, GetDB(r).QueryRow("SELECT * FROM test WHERE a = $1", id).Scan(&d.A, &d.B))
 
 		Render(r).JSON(d)
 	}))
@@ -143,34 +143,34 @@ func (s *testService) Register(srv *Server) error {
 		d := testDecode{}
 		MustDecode(r, &d)
 		_, err := GetDB(r).Exec("INSERT INTO test(b) VALUES($1)", d.B)
-		MaybeFail(r, http.StatusBadRequest, err)
+		MaybeFail(http.StatusBadRequest, err)
 		Render(r).SetCode(http.StatusCreated)
 	}), TransactionMiddleware)
 
 	srv.Put("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.Atoi(GetParams(r).ByName("id"))
-		MaybeFail(r, http.StatusBadRequest, err)
+		MaybeFail(http.StatusBadRequest, err)
 		d := testDecode{}
 		MustDecode(r, &d)
 		if d.A != id {
-			Fail(r, http.StatusBadRequest, fmt.Errorf("ids must match"))
+			Fail(http.StatusBadRequest, fmt.Errorf("ids must match"))
 		}
 
 		res, err := GetDB(r).Exec("UPDATE test SET b = $1 WHERE a = $2", d.B, d.A)
-		MaybeFail(r, http.StatusInternalServerError, err)
+		MaybeFail(http.StatusInternalServerError, err)
 		aff, _ := res.RowsAffected()
 		if aff == 0 {
-			Fail(r, http.StatusNotFound, nil)
+			Fail(http.StatusNotFound, nil)
 		}
 	}), TransactionMiddleware)
 
 	srv.Delete("/test/:id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := GetParams(r).ByName("id")
 		res, err := GetDB(r).Exec("DELETE FROM test WHERE a = $1", id)
-		MaybeFail(r, http.StatusInternalServerError, err)
+		MaybeFail(http.StatusInternalServerError, err)
 		aff, _ := res.RowsAffected()
 		if aff == 0 {
-			Fail(r, http.StatusNotFound, nil)
+			Fail(http.StatusNotFound, nil)
 		}
 	}), TransactionMiddleware)
 
