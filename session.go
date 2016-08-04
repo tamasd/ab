@@ -33,8 +33,10 @@ const (
 	hash_len            = 32
 )
 
-var MalformedCookieError = errors.New("malformed cookie")
-var SignatureVerificationFailedError = errors.New("signature verification failed")
+var (
+	MalformedCookieError             = errors.New("malformed cookie")
+	SignatureVerificationFailedError = errors.New("signature verification failed")
+)
 
 // Extracts the session from the http request struct.
 func GetSession(r *http.Request) Session {

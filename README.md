@@ -1,6 +1,6 @@
 # Alien Bunny
 
-High performance rapid application development web platform.
+Web development platform.
 
 ## Quick start
 
@@ -10,11 +10,15 @@ To install:
 
 See examples and more information at [the project website](http://www.alien-bunny.org).
 
+## Requirements
+
+* Go 1.7.
+* Built-in functionalities using PostgreSQL require PostgreSQL 9.5 or newer.
+
 ## The abt command
 
 The `abt` command is a helper tool for the development. Subcommands:
 
-* `entity`: the entity generator tool.
 * `watch`: starts a proxy that builds and reruns your application when you save a file.
 * `gensecret`: generates a secret key. Useful for generating cookie secrets.
 

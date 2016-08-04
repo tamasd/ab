@@ -56,9 +56,7 @@ func (ud *SessionUserDelegate) IsLoggedIn(r *http.Request) bool {
 			uuidColumn = "uuid"
 		}
 		err := ud.DB.QueryRow("SELECT COUNT("+uuidColumn+") FROM \""+tableName+"\" WHERE "+uuidColumn+" = $1", uid).Scan(&count)
-		if err != nil {
-			panic(err)
-		}
+		ab.MaybeFail(http.StatusInternalServerError, err)
 		return count > 0
 	}
 

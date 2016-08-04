@@ -74,7 +74,6 @@ func retryDBConn(connectString string, tries uint) *sql.DB {
 // A middleware to manage the database connection. Currently only PostgreSQL is supported.
 //
 // This middleware is automatically added to the server with PetBunny if the server has a connect string.
-// It also automatically commits the transaction (if there's any), or rolls it back on panic.
 func DBMiddleware(connectString string, maxIdleConnections, maxOpenConnections int) (func(http.Handler) http.Handler, *sql.DB) {
 	conn := retryDBConn(connectString, 10)
 

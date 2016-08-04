@@ -46,7 +46,7 @@ func (s *TestServer) StartAndCleanUp(m *testing.M, setup func(cfg *viper.Viper, 
 
 	res := m.Run()
 
-	connStr := cfg.GetString("PGConnectString")
+	connStr := cfg.GetString("db")
 	if connStr != "" {
 		conn, _ := sql.Open("postgres", connStr)
 		conn.Exec(`

@@ -103,7 +103,7 @@ func Hop(configure func(cfg *viper.Viper, s *Server) error, topMiddlewares ...fu
 //
 // - CookieSecret string: hex representation of the key bytes. Must be set.
 //
-// - PGConnectString string: connection string to Postgres. Must be set.
+// - db string: connection string to Postgres. Must be set.
 //
 // - DBMaxIdleConn int: max idle connections. Defaults to 0 (no open connections are retained).
 //
@@ -134,7 +134,7 @@ func PetBunny(cfg *viper.Viper, logger *log.Log, topMiddlewares ...func(http.Han
 		return nil, err
 	}
 
-	m, conn := DBMiddleware(cfg.GetString("PGConnectString"), cfg.GetInt("DBMaxIdleConn"), cfg.GetInt("DBMaxOpenConn"))
+	m, conn := DBMiddleware(cfg.GetString("db"), cfg.GetInt("DBMaxIdleConn"), cfg.GetInt("DBMaxOpenConn"))
 
 	s := NewServer(conn)
 

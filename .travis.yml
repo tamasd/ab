@@ -1,6 +1,6 @@
 language: go
 go:
-    - 1.6
+    - 1.7
 addons:
     postgresql: "9.5"
 services:
@@ -9,6 +9,6 @@ before_script:
     - psql -c 'CREATE DATABASE abtest;' -U postgres
     - psql -c 'CREATE DATABASE abauthtest;' -U postgres
     - psql -c 'CREATE DATABASE absearchtest;' -U postgres
-    - echo 'PGConnectString = "dbname=abtest user=postgres sslmode=disable"' > test.toml
-    - echo 'PGConnectString = "dbname=abauthtest user=postgres sslmode=disable"' > services/auth/test.toml
-    - echo 'PGConnectString = "dbname=absearchtest user=postgres sslmode=disable"' > services/search/test.toml
+    - echo 'db = "dbname=abtest user=postgres sslmode=disable"' > test.toml
+    - echo 'db = "dbname=abauthtest user=postgres sslmode=disable"' > services/auth/test.toml
+    - echo 'db = "dbname=absearchtest user=postgres sslmode=disable"' > services/search/test.toml
