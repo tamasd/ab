@@ -52,9 +52,11 @@ type Service interface {
 // Extra viper values:
 //
 // - secret: sets util.SetKey(). Must be hex.
-func Hop(configure func(cfg *viper.Viper, s *Server) error, topMiddlewares ...func(http.Handler) http.Handler) {
+func Hop(configure func(cfg *viper.Viper, s *Server) error, cfg *viper.Viper, topMiddlewares ...func(http.Handler) http.Handler) {
 	logger := log.DefaultOSLogger()
-	cfg := viper.New()
+	if cfg == nil {
+		cfg = viper.New()
+	}
 	cfg.SetConfigName("config")
 	cfg.AddConfigPath(".")
 	cfg.AutomaticEnv()
