@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/agtorre/gocolorize"
 	"github.com/tamasd/ab/lib/log"
 )
 
@@ -37,6 +38,7 @@ func DefaultLoggerMiddleware(level log.LogLevel) func(http.Handler) http.Handler
 }
 
 func LoggerMiddleware(level log.LogLevel, userLogFactory, verboseLogFactory, traceLogFactory func(w io.Writer) log.Logger, lw io.Writer) func(http.Handler) http.Handler {
+	colorizer := gocolorize.NewColor("red")
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			buf := bytes.NewBuffer(nil)
@@ -47,6 +49,9 @@ func LoggerMiddleware(level log.LogLevel, userLogFactory, verboseLogFactory, tra
 				traceLogFactory(mw),
 			)
 			l.Level = level
+			if reqid := GetRequestID(r); reqid != "" {
+				l.AddPrefix(colorizer.Paint(reqid) + " ")
+			}
 
 			r = SetContext(r, logKey, l)
 			r = SetContext(r, logBufKey, buf)

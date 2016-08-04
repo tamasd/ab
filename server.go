@@ -150,6 +150,8 @@ func PetBunny(cfg *viper.Viper, logger *log.Log, topMiddlewares ...func(http.Han
 		s.Use(topMiddlewares...)
 	}
 
+	s.Use(RequestIDMiddleware)
+
 	requestLoggerOut := ioutil.Discard
 	if s.Logger.Level > log.LOG_USER {
 		requestLoggerOut = os.Stdout

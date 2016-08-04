@@ -44,6 +44,11 @@ type Logger interface {
 	Println(v ...interface{})
 }
 
+type prefixer interface {
+	Prefix() string
+	SetPrefix(string)
+}
+
 var (
 	userPrefix    = ""
 	verbosePrefix = gocolorize.NewColor("white+b:magenta").Paint("DEBUG") + " "
@@ -94,6 +99,14 @@ func DefaultLogger(w io.Writer) *Log {
 // Creates a Log with the recommended settings that writes to stdout.
 func DefaultOSLogger() *Log {
 	return DefaultLogger(os.Stdout)
+}
+
+func (l *Log) AddPrefix(prefix string) {
+	for _, lg := range []Logger{l.user, l.verbose, l.trace} {
+		if p, ok := lg.(prefixer); ok {
+			p.SetPrefix(prefix + p.Prefix())
+		}
+	}
 }
 
 func (l *Log) User() Logger {

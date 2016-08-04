@@ -37,6 +37,12 @@ func RequestLoggerMiddleware(lw io.Writer) func(http.Handler) http.Handler {
 				protocol = "https"
 			}
 
+			prefix := ""
+
+			if reqid := GetRequestID(r); reqid != "" {
+				prefix += gocolorize.NewColor("red").Paint(reqid) + " "
+			}
+
 			rw := &requestLoggerResponseWriter{
 				ResponseWriter: w,
 				code:           http.StatusOK,
@@ -71,7 +77,7 @@ func RequestLoggerMiddleware(lw io.Writer) func(http.Handler) http.Handler {
 				code = gocolorize.NewColor("white+b:red").Paint(code)
 			}
 
-			fmt.Fprintf(lw, "%s\t%s\t%s\t%s\n", gocolorize.NewColor("cyan").Paint(r.Method), gocolorize.NewColor("blue").Paint(protocol+"://"+host+path), code, time)
+			fmt.Fprintf(lw, "%s%s\t%s\t%s\t%s\n", prefix, gocolorize.NewColor("cyan").Paint(r.Method), gocolorize.NewColor("blue").Paint(protocol+"://"+host+path), code, time)
 		})
 	}
 }
