@@ -18,7 +18,7 @@ import "net/http"
 
 type ResourceListEvent interface {
 	Before(*http.Request)
-	After(*http.Request, *[]Resource)
+	After(*http.Request, *ResourceList)
 }
 
 type resourceListEvents []ResourceListEvent
@@ -29,7 +29,7 @@ func (e resourceListEvents) invokeBefore(r *http.Request) {
 	}
 }
 
-func (e resourceListEvents) invokeAfter(r *http.Request, res *[]Resource) {
+func (e resourceListEvents) invokeAfter(r *http.Request, res *ResourceList) {
 	for _, evt := range e {
 		evt.After(r, res)
 	}
@@ -37,7 +37,7 @@ func (e resourceListEvents) invokeAfter(r *http.Request, res *[]Resource) {
 
 type ResourceListEventCallback struct {
 	BeforeCallback func(*http.Request)
-	AfterCallback  func(*http.Request, *[]Resource)
+	AfterCallback  func(*http.Request, *ResourceList)
 }
 
 func (c ResourceListEventCallback) Before(r *http.Request) {
@@ -46,7 +46,7 @@ func (c ResourceListEventCallback) Before(r *http.Request) {
 	}
 }
 
-func (c ResourceListEventCallback) After(r *http.Request, res *[]Resource) {
+func (c ResourceListEventCallback) After(r *http.Request, res *ResourceList) {
 	if c.AfterCallback != nil {
 		c.AfterCallback(r, res)
 	}

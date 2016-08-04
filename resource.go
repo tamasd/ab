@@ -15,7 +15,9 @@
 package ab
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/lib/pq"
@@ -24,6 +26,47 @@ import (
 var ErrNoEndpoints = errors.New("no endpoints are enabled for this resource")
 
 type Resource interface {
+}
+
+type ResourceList struct {
+	Items    []Resource          `json:"items"`
+	page     int                 `json:"-"`
+	pageSize int                 `json:"-"`
+	basePath string              `json:"-"`
+	Curies   []HALCurie          `json:"-"`
+	Rels     map[string][]string `json:"-"`
+}
+
+type resourceListHALJSON struct {
+	Items []interface{}          `json:"items"`
+	Links map[string]interface{} `json:"_links"`
+}
+
+func (rl ResourceList) MarshalJSON() ([]byte, error) {
+	items := make([]interface{}, len(rl.Items))
+	for i, item := range rl.Items {
+		if el, ok := item.(EndpointLinker); ok {
+			items[i] = newHalWrapper(el)
+		} else {
+			items[i] = item
+		}
+	}
+
+	return json.Marshal(resourceListHALJSON{
+		Items: items,
+		Links: createHALLinkList(rl.links(), rl.Curies),
+	})
+}
+
+func (rl ResourceList) links() map[string][]string {
+	if rl.page > 1 {
+		rl.Rels["page previous"] = append(rl.Rels["page previous"], fmt.Sprintf("%s?page=%d", rl.basePath, rl.page-1))
+	}
+	if len(rl.Items) == rl.pageSize {
+		rl.Rels["page next"] = append(rl.Rels["page next"], fmt.Sprintf("%s?page=%d", rl.basePath, rl.page+1))
+	}
+
+	return rl.Rels
 }
 
 type ResourceListDelegate interface {
@@ -60,7 +103,7 @@ type ResourcePathOverrider interface {
 
 type ResourceFormatter interface {
 	FormatSingle(Resource, *Renderer)
-	FormatMulti([]Resource, *Renderer)
+	FormatMulti(ResourceList, *Renderer)
 }
 
 type ResourceControllerDelegate interface {
@@ -190,10 +233,16 @@ func (res *ResourceController) listHandler(w http.ResponseWriter, r *http.Reques
 
 	list, err := res.listDelegate.List(r, start, limit)
 	MaybeFail(http.StatusInternalServerError, res.convertError(err))
+	reslist := ResourceList{
+		Items:    list,
+		pageSize: limit,
+		page:     start / limit,
+		basePath: "/api/" + res.delegate.GetName(),
+	}
 
-	res.listEvents.invokeAfter(r, &list)
+	res.listEvents.invokeAfter(r, &reslist)
 
-	res.ResourceFormatter.FormatMulti(list, Render(r))
+	res.ResourceFormatter.FormatMulti(reslist, Render(r))
 }
 
 func (res *ResourceController) postHandler(w http.ResponseWriter, r *http.Request) {

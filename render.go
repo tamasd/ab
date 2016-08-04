@@ -115,13 +115,29 @@ func (r *Renderer) Binary(mediaType, filename string, reader io.Reader) *Rendere
 	})
 }
 
+func maybePrefix(w io.Writer) {
+	if JSONPrefix {
+		w.Write([]byte(")]}',\n"))
+	}
+}
+
 // Adds a JSON offer for the Renderer struct.
 func (r *Renderer) JSON(v interface{}) *Renderer {
 	return r.AddOffer("application/json", func(w http.ResponseWriter) {
-		if JSONPrefix {
-			w.Write([]byte(")]}',\n"))
-		}
+		maybePrefix(w)
 		json.NewEncoder(w).Encode(v)
+	})
+}
+
+func (r *Renderer) HALJSON(v interface{}) *Renderer {
+	return r.AddOffer("application/hal+json", func(w http.ResponseWriter) {
+		maybePrefix(w)
+		enc := json.NewEncoder(w)
+		if el, ok := v.(EndpointLinker); ok {
+			enc.Encode(newHalWrapper(el))
+		} else {
+			enc.Encode(v)
+		}
 	})
 }
 

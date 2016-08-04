@@ -142,6 +142,7 @@ func (p Panic) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rd.
 		HTML(ErrorPage, pageData).
 		JSON(jsonMap).
+		XML(jsonMap, false).
 		Text(text)
 
 	rd.Render(w, r)

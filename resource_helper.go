@@ -20,9 +20,17 @@ type DefaultResourceFormatter struct {
 }
 
 func (f *DefaultResourceFormatter) FormatSingle(res Resource, r *Renderer) {
-	r.JSON(res).XML(res, false)
+	if l, ok := res.(EndpointLinker); ok {
+		r.HALJSON(l)
+	}
+	r.
+		JSON(res).
+		XML(res, false)
 }
 
-func (f *DefaultResourceFormatter) FormatMulti(res []Resource, r *Renderer) {
-	r.JSON(res).XML(res, false)
+func (f *DefaultResourceFormatter) FormatMulti(res ResourceList, r *Renderer) {
+	r.
+		HALJSON(res).
+		JSON(res.Items).
+		XML(res.Items, false)
 }
